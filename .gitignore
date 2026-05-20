@@ -1,0 +1,76 @@
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# ── Node / Electron ───────────────────────────────────────────────────────────
+node_modules/
+UI/dist/
+Electron/dist/
+*.tsbuildinfo
+
+# ── Sensitive credentials & tokens ───────────────────────────────────────────
+Backend/models/google_credentials.json
+Backend/models/google_tokens.json
+Backend/models/google_tokens_1.json
+Backend/models/google_tokens_2.json
+Backend/models/spotify_tokens.json
+Backend/models/spotify_config.json
+Backend/models/config.json
+
+# ── Biometric data ────────────────────────────────────────────────────────────
+Backend/models/*.jpg
+Backend/models/*.png
+Backend/models/*.jpeg
+
+# ── Personal memory (conversation logs, facts about Tyler, notes) ─────────────
+Backend/memory/logs/
+Backend/memory/companion_logs/
+Backend/memory/core.json
+Backend/memory/episodes.json
+Backend/memory/companion_episodes.json
+Backend/memory/notes.json
+
+# ── Voice reference (Tyler's personal voice recording) ───────────────────────
+TTS/models/voice_ref.wav
+TTS/models/voice_ref.txt
+
+# ── Large model / weight files ────────────────────────────────────────────────
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.onnx
+*.gguf
+*.ggml
+
+# ── InsightFace models ────────────────────────────────────────────────────────
+.insightface/
+
+# ── Companion mode prompt (explicit content) ─────────────────────────────────
+Backend/modes/companion.txt
+
+# ── Logs & temp ───────────────────────────────────────────────────────────────
+*.log
+Backend/maya.log
+*.tmp
+*.bak
+
+# ── OS / IDE ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# ── Claude Code internal ──────────────────────────────────────────────────────
+.claude/

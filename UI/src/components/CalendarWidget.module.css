@@ -1,0 +1,94 @@
+.panel {
+  position: fixed;
+  width: 320px;
+  background: rgba(7, 3, 18, 0.93);
+  border: 1px solid rgba(140, 80, 255, 0.2);
+  border-radius: 16px;
+  overflow: hidden;
+  z-index: 20;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.7s ease, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  user-select: none;
+  box-shadow: 0 8px 48px rgba(90, 30, 200, 0.18), inset 0 1px 0 rgba(200, 160, 255, 0.07);
+}
+.panel::before {
+  content: '';
+  position: absolute; top: 0; left: 10%; right: 10%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(180, 120, 255, 0.7), transparent);
+  pointer-events: none; z-index: 1;
+}
+.panel    { pointer-events: none; }
+.visible  { opacity: 1; transform: translateY(0); pointer-events: all; }
+.dragging { transition: none; cursor: grabbing !important; }
+
+.header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(140, 80, 255, 0.1);
+  cursor: grab; background: rgba(16, 7, 36, 0.55);
+}
+.header:active { cursor: grabbing; }
+.dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(140, 80, 255, 0.3); flex-shrink: 0;
+}
+.dotLive {
+  background: rgba(100, 200, 255, 0.9);
+  box-shadow: 0 0 8px rgba(100, 200, 255, 0.6);
+  animation: pulse 3s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+.title {
+  font-family: 'Orbitron', sans-serif; font-size: 11px; font-weight: 500;
+  color: rgba(215, 190, 255, 0.95); letter-spacing: 3.5px;
+}
+
+.body {
+  max-height: 380px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: rgba(140, 80, 255, 0.2) transparent;
+}
+.body::-webkit-scrollbar { width: 3px; }
+.body::-webkit-scrollbar-thumb { background: rgba(140, 80, 255, 0.22); border-radius: 3px; }
+
+.section { padding: 8px 14px; border-bottom: 1px solid rgba(140, 80, 255, 0.07); }
+.section:last-child { border-bottom: none; }
+
+.sectionLabel {
+  font-family: 'Orbitron', sans-serif; font-size: 8px; letter-spacing: 2.5px;
+  color: rgba(140, 80, 255, 0.5);
+  display: block; margin-bottom: 6px;
+}
+
+.empty {
+  font-family: 'Inter', sans-serif; font-size: 11px;
+  color: rgba(140, 80, 255, 0.3); margin: 0;
+}
+
+.eventRow {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 3px 0;
+}
+.eventTime {
+  font-family: 'Orbitron', sans-serif; font-size: 9px; letter-spacing: 1px;
+  color: rgba(180, 130, 255, 0.6); flex-shrink: 0; width: 38px;
+}
+.eventTitle {
+  font-family: 'Inter', sans-serif; font-size: 12.5px; font-weight: 300;
+  color: rgba(220, 205, 255, 0.88);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.authPrompt {
+  padding: 20px 16px; text-align: center;
+}
+.authPrompt p {
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 300;
+  color: rgba(200, 170, 255, 0.7); line-height: 1.6; margin: 0;
+}
+.authPrompt em {
+  font-style: normal; color: rgba(220, 190, 255, 0.9);
+  font-family: 'Orbitron', sans-serif; font-size: 10px; letter-spacing: 1px;
+}

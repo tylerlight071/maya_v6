@@ -1,0 +1,594 @@
+"""
+MAYA ComfyUI integration — image generation with a dedicated widget WebSocket.
+
+Port 8770: streams generation status to the ImageGen widget.
+ComfyUI must be running locally (start via Stability Matrix).
+"""
+import asyncio
+import contextlib
+import copy
+import json
+import random
+import shutil
+import time
+import uuid
+from pathlib import Path
+
+import httpx
+import websockets
+
+COMFYUI_URL    = "http://127.0.0.1:8188"
+COMFYUI_WS     = "ws://127.0.0.1:8188"
+WIDGET_PORT    = 8770
+OLLAMA_URL     = "http://localhost:11434/api/chat"
+OLLAMA_MODEL   = "qwen2.5:14b"
+
+# Stability Matrix default output folder — edit if your install is elsewhere
+COMFYUI_OUTPUT = Path(r"C:\Users\tyler\Downloads\Data\Packages\ComfyUI\output")
+GALLERY_DIR    = Path(r"C:\Users\tyler\Pictures\Images")
+
+# Workflow node IDs
+POSITIVE_NODE      = "6"
+KSAMPLER_NODE      = "9"
+FACE_DETAILER_NODE = "15"
+
+_clients:        set  = set()
+_current_status: dict = {"status": "idle", "step": 0, "total": 0, "filename": None, "error": None}
+_current_prompt_id: "str | None" = None      # last queued prompt, used for status polls
+_job_done_event:  "asyncio.Event | None" = None  # set by poll_status to unblock wait_for_completion
+
+# Workflow loaded from disk at startup — used when the widget doesn't send one
+_WORKFLOW_FILE = Path(__file__).parent / "models/comfyui_workflow.json"
+def _load_workflow() -> "dict | None":
+    try:
+        if _WORKFLOW_FILE.exists():
+            return json.loads(_WORKFLOW_FILE.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[comfyui] workflow load error: {e}", flush=True)
+    return None
+_loaded_workflow: "dict | None" = _load_workflow()
+
+
+# ── Pose / action LoRA library ────────────────────────────────────────────────
+
+POSE_LORAS: dict = {
+    "sidesex-10.safetensors": {
+        "triggers":    "1girl, 2boys, from side, spitroast, sex from behind, vaginal, deep penetration, standing sex, leg up",
+        "keywords":    ["side", "spitroast", "standing sex", "from behind", "oral", "deepthroat",
+                        "irrumatio", "mmf", "threesome", "standing", "leg up", "head grab", "spit roast"],
+        "strength":    0.85,
+        "composition": "full body, from side, wide shot",
+    },
+    "res_missionary-05.safetensors": {
+        "triggers":    "1girl, 2boys, restrained_missionary, sex, spread legs, vaginal, arms up, bound, armpits",
+        "keywords":    ["missionary", "restrained", "bound", "spread legs", "arms up", "on back",
+                        "lying", "from front", "held down", "wrist"],
+        "strength":    0.85,
+        "composition": "full body, front view, medium shot",
+    },
+    "cowgirl-paizuri.safetensors": {
+        "triggers":    "paizuri_cowgirl_3p, 1girl, 2boys, cowgirl position, paizuri, girl on top, straddling, breast grab",
+        "keywords":    ["cowgirl", "girl on top", "riding", "straddling", "paizuri", "titfuck",
+                        "tit fuck", "breast fuck", "on top", "titty fuck", "boobjob"],
+        "strength":    0.9,
+        "composition": "medium shot, upper body, front view",
+    },
+    "paizuri_missionary_3p.safetensors": {
+        "triggers":    "paizuri_missionary_3p, missionary, 1girl, threesome, paizuri, vaginal, 2boys, on back",
+        "keywords":    ["paizuri missionary", "lying missionary", "threesome paizuri", "on back paizuri",
+                        "missionary paizuri"],
+        "strength":    0.85,
+        "composition": "full body, medium shot, front view",
+    },
+    "multiple_male_masturbation.safetensors": {
+        "triggers":    "multiple_male_masturbation, 6+boys, 6+ penises, male masturbation, ejaculation, projectile cum",
+        "keywords":    ["multiple", "several men", "many cocks", "stroking", "jerking", "masturbat",
+                        "handjob", "projectile", "group of men", "multiple men", "circle jerk"],
+        "strength":    0.85,
+        "composition": "medium shot, group framing, chest up",
+    },
+    "res_facial.safetensors": {
+        "triggers":    "restrained_facial, 1girl, solo focus, face focus, facial, penis, cum, cum on hair, head grab from behind, hand on face",
+        "keywords":    ["restrained facial", "head grab", "held head", "grab from behind",
+                        "forced facial", "hand on face", "head held", "grabbed by hair",
+                        "held down", "restrained face"],
+        "strength":    0.8,
+        "composition": "bust shot, upper body, face and chest visible, from above",
+    },
+    "IL_allholes.safetensors": {
+        "triggers":    "4ll_h0les, gangbang, multiple boys, anal, vaginal, fellatio, double penetration, double anal, double vaginal, doggystyle",
+        "keywords":    ["gangbang", "all holes", "anal", "double penetration", "double anal",
+                        "double vaginal", "dp ", "triple", "4 guys", "5 guys", "multiple boys", "all three"],
+        "strength":    0.85,
+        "composition": "full body, wide shot, group",
+    },
+    "Bukkake Excessive Cum (Illustrious) v1.safetensors": {
+        "triggers":    "excessive cum, bukkake, cum on face, cum on body, cum in hair, cum on legs, cum on breasts",
+        "keywords":    ["facial", "cum on face", "cumshot", "face shot", "cum shot",
+                        "covered in cum", "dripping cum", "soaked", "cum all over", "bukakke",
+                        "excessive cum", "covered", "cum everywhere", "coated in", "drenched",
+                        "face covered", "painted in cum", "cum in hair"],
+        "strength":    0.85,
+        "composition": "bust shot, upper body, face and chest visible, from above",
+    },
+}
+
+
+_POSE_SLOTS = ["18", "20", "21"]   # workflow nodes available for pose LoRAs
+
+
+def select_pose_loras(description: str) -> "tuple[list[dict], str]":
+    """Score all LoRAs against description. Returns (list of selected lora dicts, composition).
+    Up to 3 LoRAs can be mixed; any with score > 0 are included, sorted by score desc."""
+    dl = description.lower()
+    scored = []
+    for filename, data in POSE_LORAS.items():
+        score = sum(1 for kw in data["keywords"] if kw in dl)
+        if score > 0:
+            scored.append((score, filename, data))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    selected = scored[:len(_POSE_SLOTS)]   # at most as many as we have slots
+
+    if not selected:
+        return [], "full body, medium shot, wide angle"
+
+    for score, filename, _ in selected:
+        print(f"[comfyui] pose LoRA: {filename} (score {score})", flush=True)
+
+    # Composition comes from the highest-scoring LoRA
+    composition = selected[0][2]["composition"]
+    result = [{"filename": fn, "strength": data["strength"], "triggers": data["triggers"]}
+              for _, fn, data in selected]
+    return result, composition
+
+
+# ── Prompt enhancement via Ollama ─────────────────────────────────────────────
+
+_ENHANCE_SYSTEM = """\
+You are an expert Stable Diffusion prompt engineer specialising in explicit anime/illustration.
+
+Convert the user's natural language scene description into optimised, comma-separated SD prompt tags.
+Focus on: scene, setting, environment, mood, lighting, actions, poses, clothing, expressions, body language.
+Do NOT add character appearance tags — those are handled by LoRA embeddings already in the base prompt.
+Do NOT repeat quality tags (best quality, masterpiece, absurdres) — they are already present.
+Output ONLY the comma-separated tags. No explanation, no preamble, no quotes.
+
+COMPOSITION RULES — always include a shot type appropriate to the scene:
+- Full-body sex scenes, positions, poses → full body, wide shot, full body view
+- Facial / cumshot on face → bust shot, upper body, face and chest in frame, from above
+- Titjob / paizuri → upper body, chest focus, medium shot
+- Gangbang / group → wide shot, group, full body
+- Default for anything unclear → full body, medium shot
+Never default to close-up face unless the scene is specifically about the face.
+
+Examples:
+Input:  "on her knees, face covered in cum, eyes rolled back"
+Output: on knees, face focus, close-up, ahegao, eyes rolled back, flushed cheeks, drool, messy
+
+Input:  "getting railed from behind standing up"
+Output: full body, from behind, standing, sex from behind, wide shot, bent over slightly, moaning
+"""
+
+
+async def enhance_prompt(description: str) -> str:
+    """Convert natural language to optimised SD prompt tags using Ollama."""
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(OLLAMA_URL, json={
+                "model":   OLLAMA_MODEL,
+                "messages": [
+                    {"role": "system",  "content": _ENHANCE_SYSTEM},
+                    {"role": "user",    "content": description},
+                ],
+                "stream":     False,
+                "keep_alive": "2m",
+                "options":    {"temperature": 0.4, "num_predict": 200},
+            })
+        if r.is_success:
+            return r.json().get("message", {}).get("content", description).strip()
+    except Exception as e:
+        print(f"[comfyui] enhance_prompt error: {e}", flush=True)
+    return description   # fallback: use as-is
+
+
+# ── Connectivity ──────────────────────────────────────────────────────────────
+
+async def is_running() -> bool:
+    try:
+        async with httpx.AsyncClient(timeout=3) as c:
+            r = await c.get(f"{COMFYUI_URL}/system_stats")
+            return r.is_success
+    except Exception:
+        return False
+
+
+# ── Broadcast to widget clients ───────────────────────────────────────────────
+
+async def _broadcast(msg: dict) -> None:
+    global _current_status
+    _current_status = msg
+    if not _clients:
+        return
+    raw  = json.dumps(msg)
+    dead = set()
+    for ws in list(_clients):
+        try:
+            await ws.send(raw)
+        except Exception:
+            dead.add(ws)
+    _clients.difference_update(dead)
+
+
+# ── ComfyUI job submission ────────────────────────────────────────────────────
+
+async def queue_prompt(workflow: dict, client_id: str) -> str:
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.post(
+            f"{COMFYUI_URL}/prompt",
+            json={"prompt": workflow, "client_id": client_id},
+        )
+    r.raise_for_status()
+    return r.json()["prompt_id"]
+
+
+async def _history_complete(prompt_id: str) -> bool:
+    """Check ComfyUI history API to see if a prompt has finished."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get(f"{COMFYUI_URL}/history/{prompt_id}")
+        if r.is_success:
+            data = r.json()
+            entry = data.get(prompt_id, {})
+            return bool(entry.get("outputs"))
+    except Exception:
+        pass
+    return False
+
+
+async def wait_for_completion(prompt_id: str, client_id: str, timeout: float = 120) -> bool:
+    """
+    Wait for a ComfyUI prompt to finish.
+
+    Primary method: watch the WebSocket for execution/progress events.
+    Fallback: poll the history API every 5 s so we never get permanently stuck
+    even if the completion event is missed.
+    """
+    uri = f"{COMFYUI_WS}/ws?client_id={client_id}"
+    deadline    = time.time() + timeout
+    last_check  = time.time()
+    seen_progress = False   # True once we've received at least one progress event
+
+    try:
+        async with websockets.connect(uri, ping_interval=20) as ws:
+            while time.time() < deadline:
+                # Check if poll_status already confirmed completion
+                if _job_done_event and _job_done_event.is_set():
+                    print("[comfyui] wait_for_completion: job_done_event set, returning True", flush=True)
+                    return True
+
+                # Periodic history fallback — checks every 5 s once sampling has started
+                if seen_progress and time.time() - last_check > 5:
+                    last_check = time.time()
+                    if await _history_complete(prompt_id):
+                        print("[comfyui] completion confirmed via history API (in wait loop)", flush=True)
+                        return True
+
+                try:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=3)
+                except asyncio.TimeoutError:
+                    continue
+
+                try:
+                    msg = json.loads(raw)
+                except Exception:
+                    continue
+
+                mtype = msg.get("type")
+                data  = msg.get("data", {})
+                # Some ComfyUI versions omit prompt_id in certain events;
+                # accept the event if prompt_id matches OR if it's absent and
+                # we've already seen progress for our prompt.
+                pid_matches = (
+                    data.get("prompt_id") == prompt_id
+                    or (seen_progress and not data.get("prompt_id"))
+                )
+
+                if mtype == "progress" and data.get("prompt_id") == prompt_id:
+                    seen_progress = True
+                    step  = int(data.get("value", 0))
+                    total = int(data.get("max", 1))
+                    asyncio.ensure_future(_broadcast({
+                        "status": "generating", "step": step, "total": total,
+                        "filename": None, "error": None,
+                    }))
+
+                elif mtype in ("executing", "executed") and pid_matches:
+                    if data.get("node") is None:
+                        print(f"[comfyui] execution complete (executing node=null)", flush=True)
+                        return True
+
+                elif mtype == "execution_success" and pid_matches:
+                    print(f"[comfyui] execution complete (execution_success)", flush=True)
+                    return True
+
+                elif mtype == "execution_error" and pid_matches:
+                    print(f"[comfyui] execution error: {data}", flush=True)
+                    return False
+
+    except Exception as e:
+        print(f"[comfyui] wait_for_completion exception: {e}", flush=True)
+
+    # Final fallback after timeout or exception
+    if await _history_complete(prompt_id):
+        print(f"[comfyui] completion confirmed via history (post-loop)", flush=True)
+        return True
+
+    return False
+
+
+async def get_output_filenames(prompt_id: str) -> list[dict]:
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(f"{COMFYUI_URL}/history/{prompt_id}")
+        if not r.is_success:
+            return []
+        history = r.json()
+        outputs = history.get(prompt_id, {}).get("outputs", {})
+        images  = []
+        for node_output in outputs.values():
+            images.extend(node_output.get("images", []))
+        return images
+    except Exception:
+        return []
+
+
+async def copy_to_gallery(image_infos: list[dict]) -> list[str]:
+    GALLERY_DIR.mkdir(parents=True, exist_ok=True)
+    copied = []
+
+    for info in image_infos:
+        filename  = info.get("filename", "")
+        subfolder = info.get("subfolder", "")
+        img_type  = info.get("type", "output")
+        if img_type == "temp" or not filename:
+            continue
+        src = COMFYUI_OUTPUT / subfolder / filename if subfolder else COMFYUI_OUTPUT / filename
+        print(f"[comfyui] copy attempt: {src} → {GALLERY_DIR / filename}", flush=True)
+        if src.exists():
+            dst = GALLERY_DIR / filename
+            shutil.copy2(str(src), str(dst))
+            copied.append(filename)
+        else:
+            print(f"[comfyui] source not found: {src}", flush=True)
+
+    # Fallback: if history API returned nothing, grab the most recent PNG from output
+    if not copied:
+        print("[comfyui] history copy found nothing — scanning output folder for recent files", flush=True)
+        import time
+        cutoff = time.time() - 120   # files modified in last 2 minutes
+        try:
+            recent = sorted(
+                [f for f in COMFYUI_OUTPUT.glob("*.png") if f.stat().st_mtime > cutoff],
+                key=lambda f: f.stat().st_mtime,
+                reverse=True,
+            )
+            for src in recent[:3]:   # at most 3 most recent
+                dst = GALLERY_DIR / src.name
+                shutil.copy2(str(src), str(dst))
+                copied.append(src.name)
+                print(f"[comfyui] fallback copy: {src.name}", flush=True)
+        except Exception as e:
+            print(f"[comfyui] fallback scan error: {e}", flush=True)
+
+    return copied
+
+
+# ── Full generation pipeline ──────────────────────────────────────────────────
+
+async def _unload_llm_models() -> None:
+    """Unload all currently-loaded Ollama models to free VRAM before image generation."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as c:
+            r = await c.get("http://localhost:11434/api/ps")
+            if r.is_success:
+                for m in r.json().get("models", []):
+                    name = m.get("name", "")
+                    if name:
+                        await c.post(OLLAMA_URL,
+                                     json={"model": name, "messages": [], "keep_alive": 0})
+                        print(f"[comfyui] unloaded {name} from VRAM", flush=True)
+    except Exception:
+        pass
+
+
+async def generate(description: str, workflow_template: dict) -> "tuple[bool, str, list[str]]":
+    """
+    Enhance prompt, queue to ComfyUI, wait for completion, copy to gallery.
+    Broadcasts status events to the widget throughout.
+    """
+    # 1. Check ComfyUI is reachable
+    print("[comfyui] checking if ComfyUI is running...", flush=True)
+    if not await is_running():
+        msg = "ComfyUI is not running. Start it in Stability Matrix first."
+        await _broadcast({"status": "error", "step": 0, "total": 0, "filename": None, "error": msg})
+        return False, msg, []
+    print("[comfyui] ComfyUI is running.", flush=True)
+
+    # 2. Unload LLM models from VRAM to make room for generation
+    await _unload_llm_models()
+
+    # 3. Enhance prompt
+    await _broadcast({"status": "enhancing", "step": 0, "total": 0, "filename": None, "error": None})
+    enhanced = await enhance_prompt(description)
+    print(f"[comfyui] enhanced prompt: {enhanced}", flush=True)
+
+    # 3. Build workflow
+    workflow = copy.deepcopy(workflow_template)
+    missing = [n for n in (POSITIVE_NODE, KSAMPLER_NODE) if n not in workflow]
+    if missing:
+        return False, f"Workflow is missing required node(s): {', '.join(missing)}. Check ComfyUI workflow JSON.", []
+    for node_id in (KSAMPLER_NODE, FACE_DETAILER_NODE):
+        if node_id in workflow:
+            workflow[node_id]["inputs"]["seed"] = random.randint(1, 2**31 - 1)
+
+    # Select and inject pose LoRAs (up to 3 can be mixed)
+    pose_loras, composition = select_pose_loras(description + " " + enhanced)
+    all_triggers = []
+    for i, slot in enumerate(_POSE_SLOTS):
+        if slot not in workflow:
+            continue
+        if i < len(pose_loras):
+            lora = pose_loras[i]
+            workflow[slot]["inputs"]["lora_name"]      = lora["filename"]
+            workflow[slot]["inputs"]["strength_model"] = lora["strength"]
+            workflow[slot]["inputs"]["strength_clip"]  = lora["strength"]
+            all_triggers.append(lora["triggers"])
+        else:
+            # Zero out unused slots
+            workflow[slot]["inputs"]["strength_model"] = 0
+            workflow[slot]["inputs"]["strength_clip"]  = 0
+
+    # Build positive prompt: base + all pose triggers + composition + enhanced
+    base = workflow[POSITIVE_NODE]["inputs"].get("text", "").rstrip()
+    parts = [base]
+    if all_triggers:
+        parts.append(", ".join(all_triggers))
+    parts.append(composition)
+    parts.append(enhanced)
+    workflow[POSITIVE_NODE]["inputs"]["text"] = "\n\n".join(parts)
+
+    # 4. Queue
+    print("[comfyui] queuing prompt...", flush=True)
+    await _broadcast({"status": "generating", "step": 0, "total": 0, "filename": None, "error": None})
+    client_id = str(uuid.uuid4())
+    global _current_prompt_id, _job_done_event
+    _job_done_event = asyncio.Event()  # fresh event for this job
+    try:
+        prompt_id = await queue_prompt(workflow, client_id)
+        _current_prompt_id = prompt_id
+        print(f"[comfyui] queued — prompt_id: {prompt_id}", flush=True)
+    except Exception as e:
+        print(f"[comfyui] queue failed: {e}", flush=True)
+        await _broadcast({"status": "error", "step": 0, "total": 0, "filename": None, "error": str(e)})
+        return False, f"Queue failed: {e}", []
+
+    # 5. Wait (progress events broadcast inside wait_for_completion)
+    print(f"[comfyui] waiting for completion (client_id={client_id[:8]}...)", flush=True)
+    success = await wait_for_completion(prompt_id, client_id)
+    if not success:
+        msg = "Generation timed out or ComfyUI reported an error."
+        await _broadcast({"status": "error", "step": 0, "total": 0, "filename": None, "error": msg})
+        return False, msg, []
+    print("[comfyui] generation complete, fetching output files...", flush=True)
+
+    # 6. Copy to gallery
+    image_infos = await get_output_filenames(prompt_id)
+    print(f"[comfyui] found {len(image_infos)} output image(s)", flush=True)
+    filenames   = await copy_to_gallery(image_infos)
+    print(f"[comfyui] copied to gallery: {filenames}", flush=True)
+
+    if not filenames:
+        msg = f"No images copied. Check output path: {COMFYUI_OUTPUT}"
+        await _broadcast({"status": "error", "step": 0, "total": 0, "filename": None, "error": msg})
+        return False, msg, []
+
+    # 7. Done
+    print(f"[comfyui] broadcasting done — {filenames[0]}", flush=True)
+    await _broadcast({
+        "status": "done", "step": 0, "total": 0,
+        "filename": filenames[0], "error": None,
+        "enhanced_prompt": enhanced,
+    })
+    return True, f"Generated {len(filenames)} image(s).", filenames
+
+
+# ── Widget WebSocket handler ──────────────────────────────────────────────────
+
+_generation_lock = asyncio.Lock()
+
+
+async def handle_client(websocket) -> None:
+    _clients.add(websocket)
+    try:
+        # Push current status on connect
+        await websocket.send(json.dumps(_current_status))
+
+        async for raw in websocket:
+            try:
+                msg = json.loads(raw)
+            except Exception:
+                continue
+
+            if msg.get("type") == "poll_status":
+                if _current_prompt_id and _current_status.get("status") == "generating":
+                    done = await _history_complete(_current_prompt_id)
+                    if done:
+                        print("[comfyui] poll_status: history confirms done — signalling wait loop", flush=True)
+                        # Signal wait_for_completion to exit immediately and release the lock
+                        if _job_done_event and not _job_done_event.is_set():
+                            _job_done_event.set()
+                        # Also handle the file copy + broadcast here in case wait_for_completion
+                        # already exited (race condition safety)
+                        if _current_status.get("status") != "done":
+                            image_infos = await get_output_filenames(_current_prompt_id)
+                            filenames   = await copy_to_gallery(image_infos)
+                            if filenames:
+                                await _broadcast({
+                                    "status": "done", "step": 0, "total": 0,
+                                    "filename": filenames[0], "error": None,
+                                })
+                    else:
+                        await websocket.send(json.dumps(_current_status))
+                else:
+                    await websocket.send(json.dumps(_current_status))
+
+            elif msg.get("type") == "generate":
+                prompt   = msg.get("prompt", "").strip()
+                workflow = msg.get("workflow") or _loaded_workflow
+                if not prompt:
+                    continue
+                if not workflow:
+                    await websocket.send(json.dumps({
+                        "status": "error", "step": 0, "total": 0,
+                        "filename": None, "error": "No workflow loaded — check Backend/models/comfyui_workflow.json.",
+                    }))
+                    continue
+                if _generation_lock.locked():
+                    await websocket.send(json.dumps({
+                        "status": "error", "step": 0, "total": 0,
+                        "filename": None, "error": "Already generating — please wait.",
+                    }))
+                    continue
+                asyncio.ensure_future(_guarded_generate(prompt, workflow))
+
+            elif msg.get("type") == "enhance_only":
+                prompt = msg.get("prompt", "").strip()
+                if prompt:
+                    enhanced = await enhance_prompt(prompt)
+                    await websocket.send(json.dumps({"type": "enhanced", "result": enhanced}))
+
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    finally:
+        _clients.discard(websocket)
+
+
+async def _guarded_generate(prompt: str, workflow: dict) -> None:
+    async with _generation_lock:
+        await generate(prompt, workflow)
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+async def run() -> None:
+    poll_task = None
+    try:
+        async with websockets.serve(handle_client, "127.0.0.1", WIDGET_PORT):
+            print(f"[comfyui] widget ws://127.0.0.1:{WIDGET_PORT}", flush=True)
+            await asyncio.Future()
+    finally:
+        if poll_task and not poll_task.done():
+            poll_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await poll_task

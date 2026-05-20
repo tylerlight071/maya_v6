@@ -1,0 +1,131 @@
+.widget {
+  position: fixed;
+  top: 65px; left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  width: 920px;
+  height: 660px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(7, 3, 18, 0.96);
+  border: 1px solid rgba(140, 80, 255, 0.22);
+  border-radius: 14px;
+  overflow: hidden;
+  z-index: 22;   /* above other widgets */
+  opacity: 0;
+  transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  user-select: none;
+  box-shadow: 0 12px 60px rgba(90, 30, 200, 0.2), inset 0 1px 0 rgba(200, 160, 255, 0.06);
+}
+
+.widget::before {
+  content: '';
+  position: absolute; top: 0; left: 8%; right: 8%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(165, 100, 235, 0.65), transparent);
+  pointer-events: none; z-index: 1;
+}
+
+.widget   { pointer-events: none; }
+.visible  { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: all; }
+.dragging { transition: none; cursor: grabbing !important; }
+
+/* ── Header ── */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(140, 80, 255, 0.12);
+  cursor: grab; background: rgba(14, 6, 32, 0.7);
+  flex-shrink: 0; gap: 12px;
+}
+.header:active { cursor: grabbing; }
+.headerLeft  { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; overflow: hidden; }
+.headerRight { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.dotReady   { background: rgba(165, 100, 235, 0.7); box-shadow: 0 0 8px rgba(165,100,235,0.5); }
+.dotLoading {
+  background: rgba(100, 200, 255, 0.9);
+  box-shadow: 0 0 10px rgba(100, 200, 255, 0.7);
+  animation: dotPulse 0.9s ease-in-out infinite;
+}
+@keyframes dotPulse { 0%,100%{opacity:1}50%{opacity:0.4} }
+
+.icon {
+  font-size: 13px; flex-shrink: 0;
+  filter: grayscale(0.3) brightness(0.9);
+}
+.title {
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 400;
+  color: rgba(215, 190, 255, 0.9);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dragHint { font-size: 11px; color: rgba(140, 80, 255, 0.22); letter-spacing: 2px; flex-shrink: 0; }
+.domain {
+  font-family: 'Orbitron', monospace; font-size: 8px; letter-spacing: 1.5px;
+  color: rgba(140, 80, 255, 0.45);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 200px;
+}
+.navBtn {
+  background: none; border: none; padding: 0 4px;
+  font-family: 'Orbitron', sans-serif; font-size: 12px;
+  color: rgba(165, 100, 235, 0.6); cursor: pointer;
+  transition: color 0.15s;
+}
+.navBtn:hover { color: rgba(215, 185, 255, 0.9); }
+
+/* ── Loading bar ── */
+.loadBar {
+  height: 2px; background: rgba(140, 80, 255, 0.12); flex-shrink: 0; overflow: hidden;
+}
+.loadFill {
+  height: 100%; width: 40%;
+  background: linear-gradient(90deg, rgba(140,80,255,0.7), rgba(200,140,255,0.95));
+  box-shadow: 0 0 12px rgba(165,100,235,0.6);
+  animation: loadSlide 1.4s ease-in-out infinite;
+}
+@keyframes loadSlide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+
+/* ── Viewport ── */
+.viewportWrap {
+  flex: 1; position: relative; overflow: hidden;
+  background: #ffffff;   /* white so web pages look right */
+}
+
+.webview {
+  width: 100%; height: 100%;
+  border: none; display: block;
+}
+
+/* Corner HUD brackets */
+.corner {
+  position: absolute; z-index: 4; width: 18px; height: 18px;
+  border-color: rgba(165, 100, 235, 0.4); border-style: solid;
+  pointer-events: none;
+}
+.cornerTL { top: 6px; left: 6px; border-width: 1.5px 0 0 1.5px; }
+.cornerTR { top: 6px; right: 6px; border-width: 1.5px 1.5px 0 0; }
+.cornerBL { bottom: 6px; left: 6px; border-width: 0 0 1.5px 1.5px; }
+.cornerBR { bottom: 6px; right: 6px; border-width: 0 1.5px 1.5px 0; }
+
+/* ── Idle state (no URL yet) ── */
+.idle {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 100%; gap: 10px; background: rgba(7, 3, 18, 0.97);
+}
+.idleIcon { font-size: 32px; opacity: 0.3; }
+.idleText {
+  font-family: 'Orbitron', sans-serif; font-size: 10px; letter-spacing: 4px;
+  color: rgba(140, 80, 255, 0.45);
+}
+.idleHint {
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 300;
+  color: rgba(140, 80, 255, 0.25);
+}

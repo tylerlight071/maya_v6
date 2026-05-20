@@ -1,0 +1,157 @@
+{
+  "1": {
+    "inputs": {
+      "ckpt_name": "prefectIllustriousXL_v70.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {"title": "Load Checkpoint"}
+  },
+  "6": {
+    "inputs": {
+      "text": "mayaXL, masterpiece, best quality, perfect quality, ultra-detailed, absurdres, 1girl, solo, long straight platinum blonde hair, saturated violet eyes, vibrant iris, detailed iris, strong limbal ring, fair skin, smooth complexion, subsurface scattering, detailed face, detailed eyes, subtle dark eyeliner, soft glossy lips, light blush, natural makeup, detailed eyelashes, detailed hair strands, realistic shading, cinematic lighting, soft rim light, medium breasts, perky breasts, looking at viewer",
+      "clip": ["21", 1]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "CLIP Text Encode (Prompt)"}
+  },
+  "7": {
+    "inputs": {
+      "text": "lowres, bad anatomy, worst quality, watermark, blurry, bad hands, extra fingers, deformed, ugly, text, signature, missing limbs, floating limbs, poorly drawn hands, poorly drawn feet, blurry face, soft face, duplicate, 2girls, multiple girls, male, 1boy, extra people, crowd",
+      "clip": ["21", 1]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {"title": "CLIP Text Encode (Prompt)"}
+  },
+  "8": {
+    "inputs": {"width": 1152, "height": 1536, "batch_size": 1},
+    "class_type": "EmptyLatentImage",
+    "_meta": {"title": "Empty Latent Image"}
+  },
+  "9": {
+    "inputs": {
+      "seed": 1109556051384256,
+      "steps": 25,
+      "cfg": 7,
+      "sampler_name": "euler",
+      "scheduler": "karras",
+      "denoise": 1,
+      "model": ["21", 0],
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "latent_image": ["8", 0]
+    },
+    "class_type": "KSampler",
+    "_meta": {"title": "KSampler"}
+  },
+  "10": {
+    "inputs": {"samples": ["9", 0], "vae": ["1", 2]},
+    "class_type": "VAEDecode",
+    "_meta": {"title": "VAE Decode"}
+  },
+  "11": {
+    "inputs": {"filename_prefix": "mayaXL_output", "images": ["15", 0]},
+    "class_type": "SaveImage",
+    "_meta": {"title": "Save Image"}
+  },
+  "12": {
+    "inputs": {"model_name": "bbox/face_yolov8m.pt"},
+    "class_type": "UltralyticsDetectorProvider",
+    "_meta": {"title": "UltralyticsDetectorProvider"}
+  },
+  "15": {
+    "inputs": {
+      "guide_size": 512,
+      "guide_size_for": "bbox",
+      "max_size": 1024,
+      "seed": 538366446821719,
+      "steps": 28,
+      "cfg": 7.5,
+      "sampler_name": "euler",
+      "scheduler": "karras",
+      "denoise": 0.35,
+      "feather": 5,
+      "noise_mask": true,
+      "force_inpaint": true,
+      "bbox_threshold": 0.5,
+      "bbox_dilation": 10,
+      "bbox_crop_factor": 3,
+      "sam_detection_hint": "center-1",
+      "sam_dilation": 0,
+      "sam_threshold": 0.93,
+      "sam_bbox_expansion": 0,
+      "sam_mask_hint_threshold": 0.7,
+      "sam_mask_hint_use_negative": "False",
+      "drop_size": 10,
+      "wildcard": "",
+      "cycle": 1,
+      "inpaint_model": "disabled",
+      "noise_mask_feather": 20,
+      "tiled_encode": "disabled",
+      "tiled_decode": "disabled",
+      "image": ["10", 0],
+      "model": ["21", 0],
+      "clip": ["21", 1],
+      "vae": ["1", 2],
+      "positive": ["6", 0],
+      "negative": ["7", 0],
+      "bbox_detector": ["12", 0]
+    },
+    "class_type": "FaceDetailer",
+    "_meta": {"title": "FaceDetailer"}
+  },
+  "18": {
+    "inputs": {
+      "lora_name": "poppydid_perfectillustriousxl.safetensors",
+      "strength_model": 0,
+      "strength_clip": 0,
+      "model": ["19", 0],
+      "clip": ["19", 1]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {"title": "Pose LoRA slot 1"}
+  },
+  "19": {
+    "inputs": {
+      "lora_name": "mayaXL_v1_illustrious.safetensors",
+      "strength_model": 0.9,
+      "strength_clip": 1,
+      "model": ["23", 0],
+      "clip": ["23", 1]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {"title": "Load LoRA (mayaXL)"}
+  },
+  "20": {
+    "inputs": {
+      "lora_name": "poppydid_perfectillustriousxl.safetensors",
+      "strength_model": 0,
+      "strength_clip": 0,
+      "model": ["18", 0],
+      "clip": ["18", 1]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {"title": "Pose LoRA slot 2"}
+  },
+  "21": {
+    "inputs": {
+      "lora_name": "poppydid_perfectillustriousxl.safetensors",
+      "strength_model": 0,
+      "strength_clip": 0,
+      "model": ["20", 0],
+      "clip": ["20", 1]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {"title": "Pose LoRA slot 3"}
+  },
+  "23": {
+    "inputs": {
+      "lora_name": "DetailerILv2-000008.safetensors",
+      "strength_model": 0.7,
+      "strength_clip": 1,
+      "model": ["1", 0],
+      "clip": ["1", 1]
+    },
+    "class_type": "LoraLoader",
+    "_meta": {"title": "Load LoRA (Detailer)"}
+  }
+}

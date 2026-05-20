@@ -1,0 +1,82 @@
+/* Sits at the very top of the screen, full width, above everything */
+.bar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 200;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  background: rgba(8, 3, 20, 0.92);
+  border-bottom: 1px solid rgba(255, 60, 60, 0.35);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  animation: barFadeIn 0.4s ease;
+}
+@keyframes barFadeIn {
+  from { opacity: 0; transform: translateY(-100%); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.left  { display: flex; align-items: center; gap: 10px; min-width: 140px; }
+.right { display: flex; align-items: center; gap: 10px; min-width: 140px; justify-content: flex-end; }
+
+/* Pulsing red record dot */
+.recDot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: rgba(255, 60, 60, 0.35); flex-shrink: 0;
+}
+.recDotActive {
+  background: rgba(255, 60, 60, 0.95);
+  box-shadow: 0 0 10px rgba(255, 60, 60, 0.7);
+  animation: recPulse 1.2s ease-in-out infinite;
+}
+@keyframes recPulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.5; transform: scale(0.75); }
+}
+
+.recLabel {
+  font-family: 'Orbitron', sans-serif; font-size: 9px; font-weight: 700;
+  letter-spacing: 3px; color: rgba(255, 80, 80, 0.9);
+}
+
+.timer {
+  font-family: 'Orbitron', monospace; font-size: 13px; font-weight: 700;
+  letter-spacing: 2px; color: rgba(255, 255, 255, 0.85);
+  min-width: 54px;
+}
+
+/* Centre title */
+.title {
+  font-family: 'Orbitron', sans-serif; font-size: 10px; font-weight: 700;
+  letter-spacing: 5px; color: rgba(215, 185, 255, 0.9);
+  text-shadow: 0 0 12px rgba(165, 100, 235, 0.5);
+  position: absolute; left: 50%; transform: translateX(-50%);
+}
+
+.screenBadge {
+  font-family: 'Orbitron', sans-serif; font-size: 8px; letter-spacing: 2px;
+  color: rgba(100, 200, 255, 0.8);
+  border: 1px solid rgba(100, 200, 255, 0.3);
+  border-radius: 4px; padding: 2px 8px;
+}
+
+.savedBadge {
+  font-family: 'Orbitron', sans-serif; font-size: 8px; letter-spacing: 2px;
+  color: rgba(80, 200, 120, 0.85);
+}
+
+.endBtn {
+  background: rgba(255, 50, 50, 0.1);
+  border: 1px solid rgba(255, 60, 60, 0.45);
+  border-radius: 6px; padding: 5px 14px;
+  font-family: 'Orbitron', sans-serif; font-size: 9px; font-weight: 700;
+  letter-spacing: 2px; color: rgba(255, 100, 100, 0.9); cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.endBtn:hover {
+  background: rgba(255, 50, 50, 0.22);
+  box-shadow: 0 0 14px rgba(255, 60, 60, 0.3);
+}

@@ -1,0 +1,15 @@
+{
+  "chat": true,
+  "spotify": true,
+  "webcam": true,
+  "weather": true,
+  "images": false,
+  "imagegen": false,
+  "browser": false,
+  "map": true,
+  "video": false,
+  "system_monitor": true,
+  "timer": false,
+  "sticky_notes": false,
+  "calendar": true
+}
