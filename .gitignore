@@ -17,6 +17,10 @@ UI/dist/
 Electron/dist/
 *.tsbuildinfo
 
+# ── YouTube / browser cookies ────────────────────────────────────────────────
+Backend/models/youtube_cookies.txt
+*.cookies.txt
+
 # ── Sensitive credentials & tokens ───────────────────────────────────────────
 Backend/models/google_credentials.json
 Backend/models/google_tokens.json

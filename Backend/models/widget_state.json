@@ -1,9 +1,9 @@
 {
   "chat": true,
-  "spotify": true,
-  "webcam": true,
-  "weather": true,
-  "images": false,
+  "spotify": false,
+  "webcam": false,
+  "weather": false,
+  "images": true,
   "imagegen": false,
   "browser": false,
   "map": true,

@@ -114,7 +114,79 @@ function createWindow() {
     });
 }
 
+// ── Video auth popup ──────────────────────────────────────────────────────────
+// Google blocks sign-in in webviews. We intercept the auth URL and open it in
+// a proper BrowserWindow using the same partition — cookies are shared, so
+// after signing in the video webview picks up the session automatically.
+ipcMain.handle('video-auth-popup', (_event, url) => {
+    const popup = new BrowserWindow({
+        width:  500,
+        height: 680,
+        parent: mainWindow,
+        modal:  false,
+        frame:  true,
+        title:  'Sign in to Google',
+        webPreferences: {
+            partition:        'persist:maya-video',   // shares cookies with video webview
+            contextIsolation: true,
+            nodeIntegration:  false,
+        },
+    });
+    popup.setMenuBarVisibility(false);
+    popup.loadURL(url);
+    popup.once('closed', () => {
+        // Notify renderer so the video webview can reload with the new session
+        mainWindow?.webContents?.send('video-auth-complete');
+    });
+});
+
+// ── YouTube cookie import ──────────────────────────────────────────────────────
+// Parses a Netscape-format cookies.txt and imports into the video session so
+// YouTube recognises the account without any sign-in flow.
+async function importYoutubeCookies(videoSession) {
+    const cookieFile = path.join(__dirname, '../Backend/models/youtube_cookies.txt');
+    if (!fs.existsSync(cookieFile)) return;
+    const lines = fs.readFileSync(cookieFile, 'utf-8').split('\n');
+    let imported = 0;
+    for (const line of lines) {
+        if (!line.trim() || line.startsWith('#')) continue;
+        const parts = line.split('\t');
+        if (parts.length < 7) continue;
+        const [domain, , cookiePath, secureStr, expiryStr, name, ...valueParts] = parts;
+        const value  = valueParts.join('\t').trim();
+        const secure = secureStr.trim() === 'TRUE';
+        const expiry = parseInt(expiryStr.trim(), 10);
+        try {
+            await videoSession.cookies.set({
+                url:            `https://www.youtube.com`,
+                domain:         domain.trim(),
+                name:           name.trim(),
+                value,
+                path:           cookiePath.trim(),
+                secure,
+                httpOnly:       false,
+                expirationDate: expiry > 0 ? expiry : undefined,
+            });
+            imported++;
+        } catch (_) { /* skip cookies that fail */ }
+    }
+    console.log(`[main] imported ${imported} YouTube cookies into video session`);
+}
+
 app.whenReady().then(() => {
+    // Configure video session — UA + pre-import YouTube cookies
+    try {
+        const videoSession = session.fromPartition('persist:maya-video');
+        videoSession.setUserAgent(
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+            '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+        );
+        importYoutubeCookies(videoSession).catch(e =>
+            console.error('[main] cookie import error:', e)
+        );
+    } catch (e) {
+        console.error('[main] video session setup error:', e);
+    }
     // Ensure Dev Logs folder exists before any recording could be triggered
     try {
         const devLogsDir = path.join(app.getPath('videos'), 'Dev Logs');

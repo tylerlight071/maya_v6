@@ -1240,11 +1240,11 @@ _WIDGET_ALIASES = {
     "calendar":       {"calendar", "agenda", "diary"},
 }
 _OPEN_VERBS  = {"open", "show", "display", "reveal", "bring", "pull"}
-_CLOSE_VERBS = {"close", "hide", "dismiss", "shut", "minimise", "minimize"}
+_CLOSE_VERBS = {"close", "hide", "dismiss", "shut", "minimise", "minimize", "stop", "exit", "quit"}
 
 
 _ALL_PANELS = ["chat", "spotify", "webcam", "weather", "images", "imagegen",
-               "system_monitor", "timer", "sticky_notes", "calendar"]
+               "system_monitor", "timer", "sticky_notes", "calendar", "video"]
 # Words that mean "all widgets at once"
 _ALL_WORDS   = {"everything", "all", "panels", "widgets", "windows"}
 
@@ -2217,12 +2217,14 @@ async def execute_tool(name: str, params: dict, websocket) -> str:
     elif name == "shutdown_system":
         log("[maya] shutdown requested — closing everything")
         with contextlib.suppress(Exception):
-            # Tell Electron to close its window
             await websocket.send(json.dumps({"type": "shutdown"}))
-        # Brief pause so TTS can finish, then exit the Python process cleanly
-        # Electron's backend.on('exit') handler will then quit the app too
         import threading
-        threading.Timer(2.5, lambda: os._exit(0)).start()
+        def _shutdown():
+            with contextlib.suppress(Exception):
+                import comfyui as _cx
+                _cx.stop_comfyui()
+            os._exit(0)
+        threading.Timer(2.5, _shutdown).start()
         return "Shutting down."
 
     # ── Timer tools ───────────────────────────────────────────────────────────

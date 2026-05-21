@@ -23,9 +23,30 @@ WIDGET_PORT    = 8770
 OLLAMA_URL     = "http://localhost:11434/api/chat"
 OLLAMA_MODEL   = "qwen2.5:14b"
 
-# Stability Matrix default output folder — edit if your install is elsewhere
-COMFYUI_OUTPUT = Path(r"C:\Users\tyler\Downloads\Data\Packages\ComfyUI\output")
+# Stability Matrix / ComfyUI paths
+COMFYUI_DIR    = Path(r"C:\Users\tyler\Downloads\Data\Packages\ComfyUI")
+
+def _find_comfyui_python() -> Path:
+    """Find the Python executable for ComfyUI, checking common Stability Matrix paths."""
+    candidates = [
+        COMFYUI_DIR / ".venv" / "Scripts" / "python.exe",
+        COMFYUI_DIR / "venv"  / "Scripts" / "python.exe",
+        Path(r"C:\Users\tyler\Downloads\Data\Python310\python.exe"),
+        Path(r"C:\Users\tyler\Downloads\Data\Python311\python.exe"),
+        Path(r"C:\Users\tyler\Downloads\Data\Python\python.exe"),
+    ]
+    for p in candidates:
+        if p.exists():
+            print(f"[comfyui] Python found: {p}", flush=True)
+            return p
+    return COMFYUI_DIR / "venv" / "Scripts" / "python.exe"   # expected default
+
+COMFYUI_PYTHON = _find_comfyui_python()
+COMFYUI_OUTPUT = COMFYUI_DIR / "output"
 GALLERY_DIR    = Path(r"C:\Users\tyler\Pictures\Images")
+
+# Auto-started ComfyUI process handle (None if not started by us)
+_comfyui_process = None
 
 # Workflow node IDs
 POSITIVE_NODE      = "6"
@@ -111,6 +132,61 @@ POSE_LORAS: dict = {
         "strength":    0.85,
         "composition": "bust shot, upper body, face and chest visible, from above",
     },
+    "tentacle_hang.safetensors": {
+        "triggers":    "tentacle sex, tentacle_hang, tentacles, 1girl, arms up, legs up, suspension, bound, hanging breasts, restrained, bdsm, solo, spread legs, girl surrounded by many tentacles, multiple tentacles, vaginal, fellatio, multiple penetrations, anal sex",
+        "keywords":    ["tentacle", "tentacles", "suspension", "hanging", "tentacle sex",
+                        "tentacle fuck", "tentacle porn", "bound by tentacles", "restrained tentacle",
+                        "tentacle bondage", "wrapped in tentacles", "lifted", "suspended"],
+        "strength":    0.85,
+        "composition": "full body, wide shot, suspended, tentacles visible",
+    },
+    "bruise_ilxl_v1.safetensors": {
+        "triggers":    "bruise",
+        "keywords":    ["bruise", "bruised", "bruising", "marks", "rough marks", "body marks",
+                        "roughed up", "beaten", "used hard", "rough sex marks"],
+        "strength":    0.7,
+        "composition": "full body, medium shot",
+    },
+    "defeated_heroine_0.0.safetensors": {
+        "triggers":    "defeated_heroine, top-down bottom-up, (from behind:1.6)",
+        "keywords":    ["defeated", "defeated heroine", "used up", "broken", "exhausted after sex",
+                        "ahegao defeated", "limp", "used", "worn out", "collapsed", "ravaged",
+                        "mind broken", "passed out", "ruined"],
+        "strength":    0.85,
+        "composition": "full body, top-down, from behind, wide shot",
+    },
+    "Seductive_Boobjob.safetensors": {
+        "triggers":    "Seductive Boobjob, breasts, close-up, sensual expression, eye contact, cleavage, kneeling, teasing pose",
+        "keywords":    ["boobjob", "breast job", "seductive kneeling", "eye contact tease",
+                        "cleavage close", "sensual breasts", "teasing pose", "looking up seductive",
+                        "kneeling tease", "breast tease"],
+        "strength":    0.85,
+        "composition": "medium shot, upper body, face and chest, slight low angle",
+    },
+    "Paizuri.safetensors": {
+        "triggers":    "norzur1 topzur1 nipzur1 verzur1 sidezur1 penisin penisout cum uncensored penis",
+        "keywords":    ["paizuri", "titfuck", "tit fuck", "titjob", "tit job", "boobjob",
+                        "boob job", "breast fuck", "between breasts", "penis between breasts",
+                        "chest fuck"],
+        "strength":    0.9,
+        "composition": "medium shot, chest focus, upper body, slight low angle",
+    },
+    "deepthroat_v1.safetensors": {
+        "triggers":    "deepthroat, irrumatio, fellatio",
+        "keywords":    ["deepthroat", "deep throat", "throat fuck", "throat fucking", "irrumatio",
+                        "face fuck", "facefuck", "gagging", "choking on cock", "forced oral",
+                        "head push", "head grab blowjob", "blowjob deep"],
+        "strength":    0.85,
+        "composition": "bust shot, face and chest, slight low angle, close-up",
+    },
+    "TeasingCleavage_Illu_Dwnsty.safetensors": {
+        "triggers":    "pulling down own clothes, teasing, cleavage, clothes pull",
+        "keywords":    ["teasing cleavage", "clothes pull", "pulling top", "pulling shirt",
+                        "pulling down", "flashing", "revealing cleavage", "clothespull",
+                        "top pull", "showing cleavage", "teasing reveal", "shirt pull"],
+        "strength":    0.85,
+        "composition": "medium shot, upper body, cleavage focus",
+    },
 }
 
 
@@ -152,6 +228,7 @@ Convert the user's natural language scene description into optimised, comma-sepa
 Focus on: scene, setting, environment, mood, lighting, actions, poses, clothing, expressions, body language.
 Do NOT add character appearance tags — those are handled by LoRA embeddings already in the base prompt.
 Do NOT repeat quality tags (best quality, masterpiece, absurdres) — they are already present.
+Do NOT include flowers, floral elements, flower decorations, or botanical imagery in any prompt.
 Output ONLY the comma-separated tags. No explanation, no preamble, no quotes.
 
 COMPOSITION RULES — always include a shot type appropriate to the scene:
@@ -386,6 +463,50 @@ async def copy_to_gallery(image_infos: list[dict]) -> list[str]:
 
 # ── Full generation pipeline ──────────────────────────────────────────────────
 
+async def start_comfyui() -> bool:
+    """Launch ComfyUI if it isn't already running. Returns True when ready."""
+    global _comfyui_process
+
+    if await is_running():
+        return True
+
+    if not COMFYUI_PYTHON.exists():
+        print(f"[comfyui] Python not found at {COMFYUI_PYTHON}", flush=True)
+        return False
+
+    import subprocess
+    print("[comfyui] starting ComfyUI...", flush=True)
+    try:
+        _comfyui_process = subprocess.Popen(
+            [str(COMFYUI_PYTHON), "main.py", "--listen", "127.0.0.1", "--port", "8188"],
+            cwd=str(COMFYUI_DIR),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as e:
+        print(f"[comfyui] failed to start: {e}", flush=True)
+        return False
+
+    # Poll until ready — up to 60 seconds
+    for _ in range(60):
+        await asyncio.sleep(1)
+        if await is_running():
+            print("[comfyui] ComfyUI ready", flush=True)
+            return True
+
+    print("[comfyui] timed out waiting for ComfyUI to start", flush=True)
+    return False
+
+
+def stop_comfyui() -> None:
+    """Terminate the ComfyUI process if we started it."""
+    global _comfyui_process
+    if _comfyui_process and _comfyui_process.poll() is None:
+        _comfyui_process.terminate()
+        print("[comfyui] ComfyUI stopped", flush=True)
+    _comfyui_process = None
+
+
 async def _unload_llm_models() -> None:
     """Unload all currently-loaded Ollama models to free VRAM before image generation."""
     try:
@@ -407,12 +528,15 @@ async def generate(description: str, workflow_template: dict) -> "tuple[bool, st
     Enhance prompt, queue to ComfyUI, wait for completion, copy to gallery.
     Broadcasts status events to the widget throughout.
     """
-    # 1. Check ComfyUI is reachable
+    # 1. Ensure ComfyUI is running — auto-start if needed
     print("[comfyui] checking if ComfyUI is running...", flush=True)
     if not await is_running():
-        msg = "ComfyUI is not running. Start it in Stability Matrix first."
-        await _broadcast({"status": "error", "step": 0, "total": 0, "filename": None, "error": msg})
-        return False, msg, []
+        await _broadcast({"status": "enhancing", "step": 0, "total": 0, "filename": None, "error": None})
+        print("[comfyui] not running — attempting auto-start...", flush=True)
+        if not await start_comfyui():
+            msg = "ComfyUI could not be started automatically. Check the install path."
+            await _broadcast({"status": "error", "step": 0, "total": 0, "filename": None, "error": msg})
+            return False, msg, []
     print("[comfyui] ComfyUI is running.", flush=True)
 
     # 2. Unload LLM models from VRAM to make room for generation

@@ -68,15 +68,36 @@ export default function VideoWidget({ visible, url = '', isAway = false }: Props
   useEffect(() => {
     const wv = webviewRef.current
     if (!wv) return
+    const maya = (window as any).mayaElectron as any
+
     const onStart  = () => setLoading(true)
     const onFinish = () => { setLoading(false); setCurrentUrl((wv as any).getURL?.() ?? currentUrl) }
+
+    // Intercept Google auth navigation — open in a real BrowserWindow so Google allows sign-in
+    const onWillNavigate = (e: any) => {
+      const url: string = e.url ?? ''
+      if (url.includes('accounts.google.com') || url.includes('google.com/signin')) {
+        e.preventDefault?.()
+        maya?.videoAuthPopup?.(url)
+      }
+    }
+
+    // After sign-in popup closes, reload the webview to pick up the new session
+    const cleanup = maya?.onVideoAuthComplete?.(() => {
+      const wv2 = webviewRef.current as any
+      wv2?.reload?.()
+    })
+
     wv.addEventListener('did-start-loading',  onStart)
     wv.addEventListener('did-stop-loading',   onFinish)
     wv.addEventListener('did-fail-load',      onFinish)
+    wv.addEventListener('will-navigate',      onWillNavigate)
     return () => {
       wv.removeEventListener('did-start-loading',  onStart)
       wv.removeEventListener('did-stop-loading',   onFinish)
       wv.removeEventListener('did-fail-load',      onFinish)
+      wv.removeEventListener('will-navigate',      onWillNavigate)
+      cleanup?.()
     }
   }, [visible])
 

@@ -20,4 +20,7 @@ contextBridge.exposeInMainWorld('mayaElectron', {
     },
 
     shutdown: () => ipcRenderer.invoke('shutdown'),
+
+    videoAuthPopup: (url) => ipcRenderer.invoke('video-auth-popup', url),
+    onVideoAuthComplete: (cb) => ipcRenderer.on('video-auth-complete', cb),
 })

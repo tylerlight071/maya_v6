@@ -16,7 +16,7 @@
   },
   "7": {
     "inputs": {
-      "text": "lowres, bad anatomy, worst quality, watermark, blurry, bad hands, extra fingers, deformed, ugly, text, signature, missing limbs, floating limbs, poorly drawn hands, poorly drawn feet, blurry face, soft face, duplicate, 2girls, multiple girls, male, 1boy, extra people, crowd",
+      "text": "lowres, bad anatomy, worst quality, watermark, blurry, bad hands, extra fingers, deformed, ugly, text, signature, missing limbs, floating limbs, poorly drawn hands, poorly drawn feet, blurry face, soft face, duplicate, 2girls, multiple girls, male, 1boy, extra people, crowd, flower, flowers, floral, flower petals, flower decoration, flower crown, flower accessory, flower print, lotus, rose, lily, daisy, sunflower, botanical,",
       "clip": ["21", 1]
     },
     "class_type": "CLIPTextEncode",
