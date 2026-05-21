@@ -63,6 +63,9 @@ TTS/models/voice_ref.txt
 # ── Companion mode prompt (explicit content) ─────────────────────────────────
 Backend/modes/companion.txt
 
+# ── Runtime-mutated state (changes on every session) ─────────────────────────
+Backend/models/widget_state.json
+
 # ── Logs & temp ───────────────────────────────────────────────────────────────
 *.log
 Backend/maya.log

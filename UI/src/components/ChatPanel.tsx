@@ -193,6 +193,12 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
     handleFiles(e.dataTransfer.files)
   }
 
+  function clearLog(): void {
+    setMessages([])
+    streamingRef.current = ''
+    setStreamingText('')
+  }
+
   function sendText(): void {
     const text = input.trim()
     if ((!text && !attachedImage) || wsRef.current?.readyState !== WebSocket.OPEN) return
@@ -211,7 +217,10 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
   }
 
   function handleKeyDown(e: React.KeyboardEvent): void {
-    if (e.key === 'Enter') sendText()
+    if (e.key === 'Enter') {
+      if (input.trim() === '/clear') { setInput(''); clearLog(); return }
+      sendText()
+    }
   }
 
   return (
@@ -233,9 +242,15 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
           <span className={styles.headerTitle}>MAYA</span>
         </div>
         <span className={styles.dragHint}>⠿ ⠿</span>
-        <span className={styles.headerRight}>
-          {wakeActive ? 'LISTENING...' : 'CONVERSATION LOG'}
-        </span>
+        <div className={styles.headerRight}>
+          <span>{wakeActive ? 'LISTENING...' : 'CONVERSATION LOG'}</span>
+          <button
+            className={styles.clearBtn}
+            onClick={clearLog}
+            onMouseDown={e => e.stopPropagation()}
+            title="Clear chat log"
+          >✕</button>
+        </div>
       </div>
 
       <div className={styles.log} ref={logRef}>
