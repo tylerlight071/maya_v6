@@ -1597,6 +1597,38 @@ def _detect_mode_switch(query: str) -> "str | None":
     return None
 
 
+_SHUTDOWN_PATTERNS = [
+    r"\bshut\s*down\b", r"\bshutdown\b", r"\bturn\s+(?:your\s+)?self\s+off\b",
+    r"\bturn\s+off\b", r"\bpower\s+off\b", r"\bclose\s+down\b",
+    r"\bquit\s+(?:maya|yourself|now)\b", r"\bexit\s+(?:maya|yourself|now)\b",
+    r"\bgoodnight\s+maya\b", r"\bsee\s+you\s+later\s+maya\b",
+]
+_SHUTDOWN_RE = None
+
+def _detect_shutdown(query: str) -> bool:
+    global _SHUTDOWN_RE
+    import re
+    if _SHUTDOWN_RE is None:
+        _SHUTDOWN_RE = re.compile("|".join(_SHUTDOWN_PATTERNS), re.IGNORECASE)
+    return bool(_SHUTDOWN_RE.search(query.strip()))
+
+
+async def _exec_shutdown(ws) -> None:
+    """Send shutdown signal to Electron and schedule Python exit."""
+    log("[maya] shutdown detected — closing")
+    with contextlib.suppress(Exception):
+        await ws.send(json.dumps({"type": "token", "text": "Shutting down. Goodbye."}))
+        await ws.send(json.dumps({"type": "done"}))
+        await ws.send(json.dumps({"type": "shutdown"}))
+    import threading
+    def _do_exit():
+        with contextlib.suppress(Exception):
+            import comfyui as _cx
+            _cx.stop_comfyui()
+        os._exit(0)
+    threading.Timer(2.0, _do_exit).start()
+
+
 async def _pre_exec_widget_commands(query: str, ws) -> str:
     """
     Intercept simple show/hide widget commands and execute them directly —
@@ -1725,6 +1757,9 @@ async def _on_transcript(
         # Normal query — respond and restart conversation timer
         _conv_state = "active"
         query = await _pre_exec_widget_commands(query, ws)
+        if _detect_shutdown(query):
+            await _exec_shutdown(ws)
+            return
         async with _respond_lock:
             try:
                 # Mode switch pre-exec (voice)
@@ -2725,7 +2760,10 @@ async def handle_client(websocket) -> None:
                     else:
                         # Clear stored image — conversation has moved on
                         _last_image_b64 = None
-                        # Mode switch pre-exec
+                        # Shutdown / mode switch pre-exec
+                        if _detect_shutdown(text):
+                            await _exec_shutdown(websocket)
+                            return
                         mode_name = _detect_mode_switch(text)
                         if mode_name:
                             result = switch_mode(mode_name)

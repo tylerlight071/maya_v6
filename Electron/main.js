@@ -72,6 +72,7 @@ function createWindow() {
     // Graceful shutdown triggered by MAYA's shutdown_system tool
     ipcMain.handle('shutdown', () => {
         backend?.kill();
+        mainWindow?.close();
         app.quit();
     });
 
@@ -109,8 +110,10 @@ function createWindow() {
     backend.stderr.on('data', d => console.error('[maya]', d.toString().trim()));
     backend.on('exit', code => {
         console.log(`[maya] backend exited (${code})`);
-        // If the backend exits cleanly (code 0), close Electron too
-        if (code === 0) app.quit();
+        if (code === 0 || code === null) {
+            mainWindow?.close();
+            app.quit();
+        }
     });
 }
 
