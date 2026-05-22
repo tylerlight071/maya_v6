@@ -2582,6 +2582,9 @@ def synthesise_and_play(text: str) -> None:
     if tts_model is None:
         log("[maya] TTS disabled — skipping playback")
         return
+    if not text or not text.strip():
+        log("[maya] TTS skipped — empty text")
+        return
     if not TTS_REF_AUDIO.exists():
         log(f"[maya] TTS skipped — voice_ref.wav not found at {TTS_REF_AUDIO}")
         return
@@ -2691,6 +2694,11 @@ async def _greet(websocket, loop: asyncio.AbstractEventLoop) -> None:
     )
     try:
         full = await stream_ollama([{"role": "user", "content": prompt}], websocket.send)
+        if not full or not full.strip():
+            log("[maya] greeting returned empty — skipping TTS")
+            await websocket.send(json.dumps({"type": "done"}))
+            await websocket.send(json.dumps({"type": "ready"}))
+            return
         history.append({"role": "assistant", "content": full})
         await websocket.send(json.dumps({"type": "done"}))
         await websocket.send(json.dumps({"type": "speaking"}))
