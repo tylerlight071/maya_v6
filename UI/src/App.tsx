@@ -17,6 +17,7 @@ import SystemMonitorWidget from './components/SystemMonitorWidget'
 import TimerWidget from './components/TimerWidget'
 import StickyNotesWidget from './components/StickyNotesWidget'
 import CalendarWidget from './components/CalendarWidget'
+import NewsWidget from './components/NewsWidget'
 
 const VISIBILITY_KEY = 'maya-widget-visibility'
 
@@ -44,6 +45,7 @@ export default function App() {
   const [timerVisible,   setTimerVisible]   = useState(false)
   const [notesVisible,   setNotesVisible]   = useState(false)
   const [calendarVisible,setCalendarVisible]= useState(false)
+  const [newsVisible,    setNewsVisible]    = useState(false)
 
   // Browser widget state
   const [browserVisible, setBrowserVisible] = useState(false)
@@ -156,6 +158,7 @@ export default function App() {
     if (widget === 'timer')          setTimerVisible(show)
     if (widget === 'sticky_notes')   setNotesVisible(show)
     if (widget === 'calendar')       setCalendarVisible(show)
+    if (widget === 'news')           setNewsVisible(show)
     if (widget === 'images') {
       setImagesVisible(show)
       if (action === 'show_image' && extra?.filename) setImageFilename(extra.filename as string)
@@ -210,6 +213,7 @@ export default function App() {
       {timerVisible    && <TimerWidget    visible isAway={away} />}
       {notesVisible    && <StickyNotesWidget visible isAway={away} />}
       {calendarVisible && <CalendarWidget visible isAway={away} />}
+      {newsVisible     && <NewsWidget visible isAway={away} onBrowse={(url, title) => handleAction('browse', undefined, undefined, { url, title })} />}
     </>
   )
 }

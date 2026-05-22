@@ -869,6 +869,7 @@ _WIDGET_DEFAULTS: dict = {
     "timer":          False,
     "sticky_notes":   False,
     "calendar":       False,
+    "news":           False,
 }
 
 def _load_widget_state() -> dict:
@@ -1132,13 +1133,14 @@ _WIDGET_ALIASES = {
     "timer":          {"timer", "timers", "countdown"},
     "sticky_notes":   {"notes", "notepad", "reminders"},
     "calendar":       {"calendar", "agenda", "diary"},
+    "news":           {"news", "headlines", "feed"},
 }
 _OPEN_VERBS  = {"open", "show", "display", "reveal", "bring", "pull"}
 _CLOSE_VERBS = {"close", "hide", "dismiss", "shut", "minimise", "minimize", "stop", "exit", "quit"}
 
 
 _ALL_PANELS = ["chat", "spotify", "webcam", "weather", "images", "imagegen",
-               "system_monitor", "timer", "sticky_notes", "calendar", "video"]
+               "system_monitor", "timer", "sticky_notes", "calendar", "video", "news"]
 # Words that mean "all widgets at once"
 _ALL_WORDS   = {"everything", "all", "panels", "widgets", "windows"}
 
@@ -2900,6 +2902,14 @@ async def main() -> None:
         kill_existing(8774)
         tasks.append(asyncio.ensure_future(_cal_mod.run()))
         log("[maya] calendar server starting...")
+    except ImportError:
+        pass
+
+    try:
+        import news as _news_mod
+        kill_existing(8775)
+        tasks.append(asyncio.ensure_future(_news_mod.run()))
+        log("[maya] news server starting...")
     except ImportError:
         pass
 
