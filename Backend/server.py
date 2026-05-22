@@ -3084,6 +3084,7 @@ async def main() -> None:
         import comfyui as _comfyui_mod
         kill_existing(8770)
         tasks.append(asyncio.create_task(_comfyui_mod.run()))
+        tasks.append(asyncio.create_task(_comfyui_mod.start_comfyui()))
         log("[maya] comfyui widget server starting (port 8770)...")
     except Exception as e:
         log(f"[maya] comfyui server failed to start: {e}")
