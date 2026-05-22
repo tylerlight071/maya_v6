@@ -39,9 +39,9 @@ def log(msg: str) -> None:
 WS_PORT        = 8765
 STT_MODEL_SIZE = "base.en"   # single model for all transcription (wake + queries)
 OLLAMA_URL      = "http://localhost:11434/api/chat"
-OLLAMA_MODEL         = "huihui_ai/mistral-small-abliterated"
-OLLAMA_MODEL_NSFW    = "huihui_ai/mistral-small-abliterated"
-VISION_MODEL         = "huihui_ai/gemma3-abliterated:12b"     # multimodal, abliterated
+OLLAMA_MODEL         = "huihui_ai/qwen3-abliterated:8b"
+OLLAMA_MODEL_NSFW    = "huihui_ai/qwen3-abliterated:8b"
+VISION_MODEL         = "huihui_ai/gemma3-abliterated:4b"      # multimodal, abliterated
 SAMPLE_RATE     = 16_000
 MAX_HISTORY     = 40           # rolling conversation window for LLM context
 
@@ -2553,6 +2553,7 @@ async def chat_with_tools(messages: list[dict], send, websocket) -> str:
                     "temperature": 0.55 if _active_mode_name else 0.25,
                     "top_p":       0.9,
                     "num_predict": 600,
+                    "think":       False,
                 },
                 "keep_alive": "2m",
             })
@@ -2593,6 +2594,7 @@ async def chat_with_tools(messages: list[dict], send, websocket) -> str:
                     "temperature": 0.85,
                     "top_p":       0.9,
                     "num_predict": 300,
+                    "think":       False,
                 },
                 "keep_alive": "2m",
             }) as resp:
@@ -2657,7 +2659,7 @@ async def stream_ollama(messages: list[dict], send) -> str:
                 "model":    _active_model(),
                 "messages": msgs,
                 "stream":   True,
-                "options":    {"temperature": 0.85, "top_p": 0.9, "num_predict": 300},
+                "options":    {"temperature": 0.85, "top_p": 0.9, "num_predict": 300, "think": False},
                 "keep_alive": "2m",
             },
         ) as resp:

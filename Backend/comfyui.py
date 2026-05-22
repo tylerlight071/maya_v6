@@ -185,7 +185,7 @@ async def enhance_prompt(description: str) -> str:
                 ],
                 "stream":     False,
                 "keep_alive": "2m",
-                "options":    {"temperature": 0.4, "num_predict": 200},
+                "options":    {"temperature": 0.4, "num_predict": 200, "think": False},
             })
         if r.is_success:
             return r.json().get("message", {}).get("content", description).strip()
