@@ -143,12 +143,33 @@ COMPOSITION RULES — always include a shot type appropriate to the scene:
 - Default for anything unclear → full body, medium shot
 Never default to close-up face unless the scene is specifically about the face.
 
+EXPRESSION RULES — always include at least one expression tag that fits the scene intensity:
+- Rough sex, pounding, hard fucking → open mouth, moaning, flushed, heavy breathing
+- Orgasm / cumming / creampie → ahegao, eyes rolled back, tongue out, drooling, blissful
+- Gangbang / used by many → ahegao, mind broken, dazed, eyes glazed, drooling
+- Deepthroat / face fuck / irrumatio → gagging, tears streaming, eyes watering, drool
+- Tentacle / monster / extreme → wide eyes, tears, crying, open mouth, terrified, shocked
+- Restrained / BDSM → gritting teeth, desperate, struggling, biting lip, fearful
+- Seductive / teasing / solo → bedroom eyes, half-lidded, smirk, seductive smile, biting lip
+- Defeated / broken / mind-break → ahegao, vacant eyes, tongue out, drooling, dazed
+- Exploding clothes / surprise → wide-eyed, shocked, open mouth, embarrassed, blushing
+- Creampie / cum play → satisfied, blissful, flushed, open mouth, panting
+- Gentle / romantic → soft smile, happy, blissful, loving gaze
+Never use "looking at viewer" or "light blush" as the only expression — they are neutral defaults.
+Always match intensity: extreme scenes need extreme expressions.
+
 Examples:
 Input:  "on her knees, face covered in cum, eyes rolled back"
-Output: on knees, face focus, close-up, ahegao, eyes rolled back, flushed cheeks, drool, messy
+Output: on knees, face focus, close-up, ahegao, eyes rolled back, tongue out, drooling, flushed cheeks, messy, blissful
 
 Input:  "getting railed from behind standing up"
-Output: full body, from behind, standing, sex from behind, wide shot, bent over slightly, moaning
+Output: full body, from behind, standing, sex from behind, wide shot, bent over slightly, open mouth moaning, flushed, heavy breathing
+
+Input:  "tentacle pit, restrained, multiple tentacles"
+Output: full body, wide shot, tentacle environment, wide eyes, tears, crying, open mouth, terrified, arms restrained
+
+Input:  "seductive pose, lingerie, teasing"
+Output: upper body, bedroom eyes, half-lidded, seductive smile, biting lip, soft lighting, inviting
 """
 
 
