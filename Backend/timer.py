@@ -143,7 +143,7 @@ async def handle_client(websocket) -> None:
 
 
 async def run() -> None:
-    asyncio.ensure_future(_tick_loop())
+    asyncio.create_task(_tick_loop())
     async with websockets.serve(handle_client, "127.0.0.1", TIMER_PORT):
         print(f"[timer] ws://127.0.0.1:{TIMER_PORT}", flush=True)
         await asyncio.Future()

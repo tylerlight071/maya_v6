@@ -12,6 +12,17 @@ export const TIMING = {
   WEBCAM_APPEAR_MS:  3700,
   SPOTIFY_APPEAR_MS: 3900,
   MAYA_REPLY_MS:     850,
+
+  // WebSocket reconnect — used by all widget WS connections
+  WS_RECONNECT_MS:     2000,   // initial backoff on disconnect
+  WS_RECONNECT_MAX_MS: 30_000, // maximum backoff cap
+
+  // DevLog overlay timing
+  DEVLOG_BADGE_MS:   1500,   // how long to show ✓ SAVED before closing
+  DEVLOG_STOP_MS:    10_000, // safety timeout if onstop never fires
+
+  // Map
+  MAP_RESET_HIDE_MS: 2600,   // delay before hiding map after reset
 } as const
 
 export const SPOTIFY_WS        = 'ws://127.0.0.1:8767'

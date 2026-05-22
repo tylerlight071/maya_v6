@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import type { MutableRefObject } from 'react'
 import type { Message, MayaState } from '../types'
-import { WS_URL } from '../constants'
+import type {} from '../types/electron'  // augments Window with mayaElectron
+import { WS_URL, TIMING } from '../constants'
 import { useDraggable } from '../hooks/useDraggable'
 import styles from './ChatPanel.module.css'
 
@@ -25,8 +26,10 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
   const { dragging, panelStyle, onHeaderMouseDown, initTopLeft } = useDraggable(panelRef, 'maya-pos-chat')
 
   const fileInputRef  = useRef<HTMLInputElement>(null)
-  const onActionRef   = useRef(onAction)
+  const onActionRef      = useRef(onAction)
   useEffect(() => { onActionRef.current = onAction }, [onAction])
+  const onStateChangeRef = useRef(onStateChange)
+  useEffect(() => { onStateChangeRef.current = onStateChange }, [onStateChange])
 
   const [messages,      setMessages]      = useState<Message[]>([])
   const [input,         setInput]         = useState('')
@@ -66,7 +69,7 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
       ws.onclose = () => {
         setWsConnected(false)
         if (wsSendRef) wsSendRef.current = null
-        reconnectTimer = setTimeout(connect, 2000)
+        reconnectTimer = setTimeout(connect, TIMING.WS_RECONNECT_MS)
       }
 
       ws.onerror = () => ws.close()
@@ -77,12 +80,12 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
           switch (msg.type as string) {
             case 'wake_detected':
               setWakeActive(true)
-              onStateChange('listening')
+              onStateChangeRef.current('listening')
               break
             case 'transcript':
               setWakeActive(false)
               setMessages(prev => [...prev, { id: nextIdRef.current++, role: 'u', text: msg.text as string }])
-              onStateChange('thinking')
+              onStateChangeRef.current('thinking')
               break
             case 'token':
               streamingRef.current += msg.text as string
@@ -98,17 +101,17 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
               break
             }
             case 'speaking':
-              onStateChange('speaking')
+              onStateChangeRef.current('speaking')
               break
             case 'ready':
               setWakeActive(false)
-              onStateChange('idle')
+              onStateChangeRef.current('idle')
               break
             case 'action':
               onActionRef.current?.(msg.action as string, msg.widget as string, msg.visible as boolean, msg as Record<string, unknown>)
               break
             case 'capture_screen_request': {
-              const maya = (window as unknown as Record<string, unknown>).mayaElectron as { captureScreen?: () => Promise<string | null> } | undefined
+              const maya = window.mayaElectron
               if (maya?.captureScreen) {
                 maya.captureScreen().then(dataUrl => {
                   if (dataUrl && wsRef.current?.readyState === WebSocket.OPEN) {
@@ -120,7 +123,7 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
               break
             }
             case 'shutdown': {
-              const maya = (window as unknown as Record<string, unknown>).mayaElectron as { shutdown?: () => void } | undefined
+              const maya = window.mayaElectron
               if (maya?.shutdown) {
                 maya.shutdown()
               } else {
@@ -130,7 +133,7 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
             }
             case 'error':
               console.error('[maya backend]', msg.message)
-              onStateChange('idle')
+              onStateChangeRef.current('idle')
               break
           }
         } catch (err) {
@@ -146,7 +149,7 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
       clearTimeout(reconnectTimer)
       wsRef.current?.close()
     }
-  }, [onStateChange])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps — callbacks held in refs, WS must not reconnect on re-renders
 
   function handleFiles(files: FileList | null): void {
     if (!files || files.length === 0) return
@@ -210,7 +213,7 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
     }])
     setInput('')
     setAttachedImage(null)
-    onStateChange('thinking')
+    onStateChangeRef.current('thinking')
     const payload: Record<string, string> = { type: 'send_text', text }
     if (attachedImage) payload.image = attachedImage.b64
     wsRef.current.send(JSON.stringify(payload))

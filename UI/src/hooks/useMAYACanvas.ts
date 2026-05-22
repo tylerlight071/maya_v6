@@ -68,9 +68,17 @@ export function useMAYACanvas(
 
         const phaseElapsed = t - phaseStart.current
 
-        // ── Background (always) ────────────────────────────────────────────
+        // ── Background (always) ───────────────────────────────────────────
         ctx.clearRect(0, 0, W, H)
         drawBackground(ctx, W, H, cx, cy)
+
+        // In 'away' phase nothing animates — throttle to 5fps to save CPU/GPU
+        if (phase === 'away') {
+          rafRef.current = setTimeout(() => {
+            rafRef.current = requestAnimationFrame(frame)
+          }, 200) as unknown as number
+          return
+        }
 
         // ── Grid + top bracket with phase-aware alpha ──────────────────────
         let gridAlpha = 1.0
@@ -132,6 +140,7 @@ export function useMAYACanvas(
     return () => {
       window.removeEventListener('resize', resize)
       cancelAnimationFrame(rafRef.current)
+      clearTimeout(rafRef.current as unknown as ReturnType<typeof setTimeout>)
     }
   }, [canvasRef])
 }

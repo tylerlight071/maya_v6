@@ -68,6 +68,17 @@
   color: rgba(80, 200, 120, 0.85);
 }
 
+.recDotError {
+  background: rgba(255, 160, 30, 0.95);
+  box-shadow: 0 0 10px rgba(255, 160, 30, 0.7);
+}
+
+.errorMsg {
+  font-family: 'Inter', sans-serif; font-size: 10px;
+  color: rgba(255, 160, 30, 0.9);
+  max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 .endBtn {
   background: rgba(255, 50, 50, 0.1);
   border: 1px solid rgba(255, 60, 60, 0.45);

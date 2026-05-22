@@ -37,9 +37,16 @@ def _collect() -> dict:
         "vram_used":  0.0,
         "vram_total": 0.0,
         "gpu_temp":   0,
+        # Secondary GPU (GPU 1) — populated when a second NVIDIA card is present
+        "gpu2":        0.0,
+        "vram2_used":  0.0,
+        "vram2_total": 0.0,
+        "gpu2_temp":   0,
     }
     if _nvml_ok:
         try:
+            gpu_count = pynvml.nvmlDeviceGetCount()
+
             handle           = pynvml.nvmlDeviceGetHandleByIndex(0)
             util             = pynvml.nvmlDeviceGetUtilizationRates(handle)
             mem              = pynvml.nvmlDeviceGetMemoryInfo(handle)
@@ -48,6 +55,16 @@ def _collect() -> dict:
             stats["vram_used"]  = round(mem.used  / 1e9, 1)
             stats["vram_total"] = round(mem.total / 1e9, 1)
             stats["gpu_temp"]   = temp
+
+            if gpu_count >= 2:
+                h2    = pynvml.nvmlDeviceGetHandleByIndex(1)
+                u2    = pynvml.nvmlDeviceGetUtilizationRates(h2)
+                m2    = pynvml.nvmlDeviceGetMemoryInfo(h2)
+                t2    = pynvml.nvmlDeviceGetTemperature(h2, pynvml.NVML_TEMPERATURE_GPU)
+                stats["gpu2"]        = round(u2.gpu, 1)
+                stats["vram2_used"]  = round(m2.used  / 1e9, 1)
+                stats["vram2_total"] = round(m2.total / 1e9, 1)
+                stats["gpu2_temp"]   = t2
         except Exception:
             pass
     return stats
@@ -59,14 +76,21 @@ def _check_alerts(stats: dict) -> None:
     if now - _last_alert_at < ALERT_COOLDOWN:
         return
 
-    vram_pct = (stats["vram_used"] / stats["vram_total"] * 100) if stats["vram_total"] > 0 else 0
-    ram_pct  = (stats["ram_used"]  / stats["ram_total"]  * 100) if stats["ram_total"]  > 0 else 0
+    vram_pct  = (stats["vram_used"]  / stats["vram_total"]  * 100) if stats["vram_total"]  > 0 else 0
+    vram2_pct = (stats["vram2_used"] / stats["vram2_total"] * 100) if stats["vram2_total"] > 0 else 0
+    ram_pct   = (stats["ram_used"]   / stats["ram_total"]   * 100) if stats["ram_total"]   > 0 else 0
 
     if vram_pct > 90:
         _alert_message = (
             f"VRAM is at {vram_pct:.0f}% "
             f"({stats['vram_used']:.1f}/{stats['vram_total']:.1f} GB) — "
             "consider closing something before the next generation."
+        )
+        _last_alert_at = now
+    elif vram2_pct > 90 and stats["vram2_total"] > 0:
+        _alert_message = (
+            f"GPU 2 VRAM is at {vram2_pct:.0f}% "
+            f"({stats['vram2_used']:.1f}/{stats['vram2_total']:.1f} GB)."
         )
         _last_alert_at = now
     elif ram_pct > 92:
@@ -114,7 +138,7 @@ async def handle_client(websocket) -> None:
 
 
 async def run() -> None:
-    asyncio.ensure_future(_poll())
+    asyncio.create_task(_poll())
     async with websockets.serve(handle_client, "127.0.0.1", MONITOR_PORT):
         print(f"[monitor] ws://127.0.0.1:{MONITOR_PORT}", flush=True)
         await asyncio.Future()

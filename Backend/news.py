@@ -18,16 +18,27 @@ import websockets
 
 NEWS_PORT    = 8775
 REFRESH_SECS = 900   # 15 minutes
+FEEDS_FILE   = Path(__file__).parent / "models/news_feeds.json"
 
-# RSS feeds — (display name, url, category)
-FEEDS = [
-    ("BBC News",         "http://feeds.bbci.co.uk/news/rss.xml",                  "top"),
-    ("Sky News",         "https://feeds.skynews.com/feeds/rss/home.xml",           "top"),
-    ("The Guardian",     "https://www.theguardian.com/world/rss",                  "world"),
-    ("Reuters",          "https://feeds.reuters.com/reuters/topNews",              "top"),
-    ("TechCrunch",       "https://techcrunch.com/feed/",                           "tech"),
-    ("Ars Technica",     "https://feeds.arstechnica.com/arstechnica/index",        "tech"),
-]
+# RSS feeds — loaded from models/news_feeds.json; fallback to hardcoded list
+def _load_feeds() -> list:
+    if FEEDS_FILE.exists():
+        try:
+            data = json.loads(FEEDS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return [tuple(f) for f in data if len(f) == 3]
+        except Exception as e:
+            print(f"[news] news_feeds.json load error: {e}", flush=True)
+    return [
+        ("BBC News",     "http://feeds.bbci.co.uk/news/rss.xml",           "top"),
+        ("Sky News",     "https://feeds.skynews.com/feeds/rss/home.xml",   "top"),
+        ("The Guardian", "https://www.theguardian.com/world/rss",          "world"),
+        ("Reuters",      "https://feeds.reuters.com/reuters/topNews",      "top"),
+        ("TechCrunch",   "https://techcrunch.com/feed/",                   "tech"),
+        ("Ars Technica", "https://feeds.arstechnica.com/arstechnica/index","tech"),
+    ]
+
+FEEDS = _load_feeds()
 
 _clients:  set  = set()
 _articles: list = []   # [{title, url, summary, source, category, published_ts}]
@@ -120,8 +131,10 @@ async def refresh() -> None:
     async with httpx.AsyncClient(headers={"User-Agent": "Mozilla/5.0"}) as client:
         tasks = [_fetch_feed(client, name, url, cat) for name, url, cat in FEEDS]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        for r in results:
-            if isinstance(r, list):
+        for (name, _, _cat), r in zip(FEEDS, results):
+            if isinstance(r, Exception):
+                print(f"[news] fetch error ({name}): {r}", flush=True)
+            elif isinstance(r, list):
                 all_articles.extend(r)
 
     # Deduplicate by URL, sort newest first
@@ -150,10 +163,15 @@ async def _refresh_loop() -> None:
 async def _broadcast(msg: dict) -> None:
     if not _clients:
         return
-    raw = json.dumps(msg)
+    raw  = json.dumps(msg)
+    dead = set()
     for ws in list(_clients):
-        with contextlib.suppress(Exception):
+        try:
             await ws.send(raw)
+        except Exception as e:
+            print(f"[news] broadcast error (client dropped): {e}", flush=True)
+            dead.add(ws)
+    _clients.difference_update(dead)
 
 
 # ── WebSocket handler ─────────────────────────────────────────────────────────
@@ -175,7 +193,12 @@ async def handle_client(websocket) -> None:
 
 
 async def run() -> None:
-    asyncio.ensure_future(_refresh_loop())
-    async with websockets.serve(handle_client, "127.0.0.1", NEWS_PORT):
-        print(f"[news] ws://127.0.0.1:{NEWS_PORT}", flush=True)
-        await asyncio.Future()
+    refresh_task = asyncio.create_task(_refresh_loop())
+    try:
+        async with websockets.serve(handle_client, "127.0.0.1", NEWS_PORT):
+            print(f"[news] ws://127.0.0.1:{NEWS_PORT}", flush=True)
+            await asyncio.Future()
+    finally:
+        refresh_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await refresh_task

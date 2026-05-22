@@ -1,3 +1,15 @@
+/* ── Z-index scale — centralised so layers never conflict ── */
+:root {
+  --z-canvas:      1;     /* MAYACanvas background */
+  --z-map:        10;     /* MapOverlay full-screen */
+  --z-widget:     20;     /* Standard draggable widgets */
+  --z-video:      20;
+  --z-browser:    22;
+  --z-chat:       21;
+  --z-drag:      100;     /* Widget being actively dragged */
+  --z-devlog:    200;     /* DevLog bar — always on top */
+}
+
 *, *::before, *::after {
   margin: 0;
   padding: 0;

@@ -109,9 +109,11 @@ async def detect_location() -> dict:
                 LOCATION_FILE.write_text(json.dumps(loc), encoding="utf-8")
                 return loc
     except Exception as e:
-        print(f"[weather] geolocation failed ({e}), using London fallback", flush=True)
+        print(f"[weather] geolocation failed ({e}) — location unavailable, using London as placeholder", flush=True)
 
-    return {"lat": 51.5074, "lon": -0.1278, "city": "London", "country": "GB", "region": "England", "pinned": False}
+    # Fallback — marked so the system prompt can note the location is unknown
+    return {"lat": 51.5074, "lon": -0.1278, "city": "Unknown", "country": "??",
+            "region": "", "pinned": False, "fallback": True}
 
 
 # ── Fetch ─────────────────────────────────────────────────────────────────────
@@ -273,8 +275,16 @@ async def _poll() -> None:
 
 
 async def set_location(query: str) -> "dict | None":
-    """Geocode a place name and update the location. Returns new location dict or None."""
+    """Geocode a place name and update the location. Returns new location dict or None.
+    Pass 'auto' or 'detect' to clear the pin and re-detect via IP."""
     global _location, _current_weather
+    # Unpin: let IP detection take over again
+    if query.strip().lower() in ("auto", "detect", "automatic"):
+        if LOCATION_FILE.exists():
+            LOCATION_FILE.unlink(missing_ok=True)
+        _location = await detect_location()
+        _current_weather = await fetch_weather(_location["lat"], _location["lon"])
+        return _location
     try:
         async with httpx.AsyncClient(timeout=8) as c:
             r = await c.get(
@@ -344,7 +354,7 @@ async def run() -> None:
     try:
         async with websockets.serve(handle_client, "127.0.0.1", WEATHER_PORT):
             print(f"[weather] ws://127.0.0.1:{WEATHER_PORT}", flush=True)
-            poll_task = asyncio.ensure_future(_poll())
+            poll_task = asyncio.create_task(_poll())
             await asyncio.Future()
     finally:
         if poll_task and not poll_task.done():

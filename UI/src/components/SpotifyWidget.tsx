@@ -71,7 +71,10 @@ export default function SpotifyWidget({ visible, isAway = false }: SpotifyWidget
   useEffect(() => { trackRef.current = track }, [track])
 
   // ── Single RAF loop — direct DOM mutation, zero React re-renders ─────────────
+  // Runs at full 60fps when playing; sleeps at 1fps when paused to save CPU.
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | number = 0
+
     function tick() {
       const t = trackRef.current
       if (t && progFillRef.current && progTimeRef.current) {
@@ -79,13 +82,21 @@ export default function SpotifyWidget({ visible, isAway = false }: SpotifyWidget
           ? Math.min(t.progress_ms + (Date.now() - t.timestamp), t.duration_ms)
           : t.progress_ms
         const pct = t.duration_ms > 0 ? (ms / t.duration_ms) * 100 : 0
-        progFillRef.current.style.width     = `${pct}%`
-        progTimeRef.current.textContent     = fmt(ms)
+        progFillRef.current.style.width = `${pct}%`
+        progTimeRef.current.textContent = fmt(ms)
       }
-      rafRef.current = requestAnimationFrame(tick)
+      if (trackRef.current?.is_playing) {
+        timer = requestAnimationFrame(tick)
+      } else {
+        timer = setTimeout(tick, 1000) as unknown as number  // 1fps when paused
+      }
     }
-    rafRef.current = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(rafRef.current)
+
+    timer = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(timer as number)
+      clearTimeout(timer as ReturnType<typeof setTimeout>)
+    }
   }, [])  // runs once — reads from refs, never restarts
 
   // ── WebSocket ───────────────────────────────────────────────────────────────
@@ -189,18 +200,19 @@ export default function SpotifyWidget({ visible, isAway = false }: SpotifyWidget
   // ── Progress bar — click + drag ──────────────────────────────────────────────
   const draggingProg = useRef(false)
 
+  // Use trackRef so the drag effect doesn't re-register handlers on every Spotify poll
   function seekFromEvent(clientX: number) {
-    if (!progBarRef.current || !track) return
+    const t = trackRef.current
+    if (!progBarRef.current || !t) return
     const rect = progBarRef.current.getBoundingClientRect()
     const pct  = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    const ms   = Math.round(pct * track.duration_ms)
-    // Optimistic update
-    setTrack(t => t ? { ...t, progress_ms: ms, timestamp: Date.now() } : t)
+    const ms   = Math.round(pct * t.duration_ms)
+    setTrack(cur => cur ? { ...cur, progress_ms: ms, timestamp: Date.now() } : cur)
     send({ type: 'seek', position_ms: ms })
   }
 
   function onProgMouseDown(e: React.MouseEvent<HTMLDivElement>) {
-    if (!track) return
+    if (!trackRef.current) return
     e.preventDefault()
     e.stopPropagation()
     draggingProg.current = true
@@ -213,7 +225,7 @@ export default function SpotifyWidget({ visible, isAway = false }: SpotifyWidget
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup',   onUp)
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp) }
-  }, [track])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])  // trackRef kept in sync via separate effect — no need to re-register on track change
 
   // ── Volume bar — click + drag ────────────────────────────────────────────────
   const draggingVol = useRef(false)

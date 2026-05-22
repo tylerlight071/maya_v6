@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import { useDraggable } from '../hooks/useDraggable'
+import type {} from '../types/electron'
 import styles from './VideoWidget.module.css'
 
 // Reuse Electron webview declaration from BrowserWidget
@@ -68,7 +69,7 @@ export default function VideoWidget({ visible, url = '', isAway = false }: Props
   useEffect(() => {
     const wv = webviewRef.current
     if (!wv) return
-    const maya = (window as any).mayaElectron as any
+    const maya = window.mayaElectron
 
     const onStart  = () => setLoading(true)
     const onFinish = () => { setLoading(false); setCurrentUrl((wv as any).getURL?.() ?? currentUrl) }

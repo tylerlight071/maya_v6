@@ -57,7 +57,10 @@ export default function App() {
   const [devLogShowScreen, setDevLogShowScreen] = useState(false)
   const webcamBeforeLog = useRef(false)
 
-  const visibilityRef = useRef({ chat: false, spotify: false, webcam: false, weather: false, images: false, imagegen: false })
+  const visibilityRef = useRef<{
+    chat: boolean; spotify: boolean; webcam: boolean;
+    weather: boolean; images: boolean; imagegen: boolean;
+  }>({ chat: false, spotify: false, webcam: false, weather: false, images: false, imagegen: false })
   const wsSendRef     = useRef<((msg: string) => void) | null>(null)
 
   // Restore persisted visibility after intro
@@ -138,7 +141,7 @@ export default function App() {
     }
     if (action === 'map_marker') { setMapCommand({ id: Date.now(), action: 'marker', lat: extra?.lat as number, lng: extra?.lng as number, label: extra?.label as string ?? '' }); return }
     if (action === 'map_clear')  { setMapCommand({ id: Date.now(), action: 'clear' }); return }
-    if (action === 'map_reset')  { setMapCommand({ id: Date.now(), action: 'reset' }); setTimeout(() => setMapVisible(false), 2600); return }
+    if (action === 'map_reset')  { setMapCommand({ id: Date.now(), action: 'reset' }); setTimeout(() => setMapVisible(false), TIMING.MAP_RESET_HIDE_MS); return }
 
     // ── Panel show/hide ───────────────────────────────────────────────────────
     if (!widget) return

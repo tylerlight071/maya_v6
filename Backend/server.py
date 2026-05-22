@@ -26,6 +26,9 @@ import websockets
 LOG = Path(__file__).parent / "maya.log"
 
 def log(msg: str) -> None:
+    # server.py uses log() instead of print() so messages are also persisted to
+    # maya.log for post-session debugging. Other backend modules use print() directly
+    # since they don't have access to LOG without creating a circular import.
     line = f"{msg}\n"
     print(line, end="", flush=True)
     with open(LOG, "a", encoding="utf-8") as f:
@@ -751,108 +754,97 @@ CURRENT DATETIME: {datetime}
 {notes_context}{memory_block}
 """
 
-# kept for reference — ABOUT TYLER section is now embedded in the main prompt above
+# ── System prompt context builders ───────────────────────────────────────────
+# Each function returns a single context string ready for template injection.
 
-
-async def build_system_prompt(messages: list[dict] = None) -> str:
-    import memory as _mem
-    from datetime import datetime
-
-    from datetime import timedelta
-    now       = datetime.now()
-    dt        = now.strftime("%A, %d %B %Y — %H:%M")
-    today_iso = now.strftime("%Y-%m-%d")
-    dates_ctx = (
-        f"TODAY: {today_iso} ({now.strftime('%A')})\n"
-        + "\n".join(
-            f"{(now + timedelta(days=i)).strftime('%A')}: {(now + timedelta(days=i)).strftime('%Y-%m-%d')}"
-            for i in range(1, 8)
-        ) + "\n"
-    )
-
-    # Live Spotify context
-    spotify_context = ""
+def _ctx_spotify() -> str:
     try:
         import spotify as _sp
         t = _sp._current_track
         if t and t.get("track"):
-            state      = "playing" if t.get("is_playing") else "paused"
-            album_part = f" ({t.get('album')})" if t.get("album") else ""
-            spotify_context = (
-                f"SPOTIFY: Currently {state} — \"{t.get('track')}\" by {t.get('artist')}{album_part}.\n"
-            )
-        else:
-            spotify_context = "SPOTIFY: Nothing currently playing.\n"
+            state = "playing" if t.get("is_playing") else "paused"
+            album = f" ({t.get('album')})" if t.get("album") else ""
+            return f"SPOTIFY: Currently {state} — \"{t.get('track')}\" by {t.get('artist')}{album}.\n"
+        return "SPOTIFY: Nothing currently playing.\n"
     except Exception:
-        spotify_context = ""
+        return ""
 
-    # Live weather context
-    weather_context = ""
+
+def _ctx_weather() -> str:
     try:
         import weather as _wx
-        w = _wx._current_weather
+        w   = _wx._current_weather
+        loc = _wx._location or {}
         if w:
-            weather_context = (
+            loc_note = " [location unknown — say 'set weather location to X' to fix]" \
+                       if loc.get("fallback") else ""
+            return (
                 f"WEATHER: {w.get('description')} {w.get('temp')}°C "
                 f"(feels like {w.get('feels_like')}°C), "
                 f"humidity {w.get('humidity')}%, "
                 f"wind {w.get('wind_speed')} mph {w.get('wind_dir')} "
-                f"— {w.get('city')}, {w.get('country')}.\n"
+                f"— {w.get('city')}, {w.get('country')}{loc_note}.\n"
             )
     except Exception:
-        weather_context = ""
+        pass
+    return ""
 
-    # System monitor context
-    monitor_context = ""
+
+def _ctx_monitor() -> str:
     try:
         import system_monitor as _mon
         s = _mon._current_stats
         if s:
-            vram_pct = round(s["vram_used"] / s["vram_total"] * 100) if s.get("vram_total") else 0
-            monitor_context = (
+            vram_pct  = round(s["vram_used"]  / s["vram_total"]  * 100) if s.get("vram_total")  else 0
+            vram2_pct = round(s["vram2_used"]  / s["vram2_total"] * 100) if s.get("vram2_total") else 0
+            gpu2_part = (
+                f" · GPU2 {s['gpu2']}% {s['vram2_used']}/{s['vram2_total']} GB VRAM ({vram2_pct}%) {s['gpu2_temp']}°C"
+                if s.get("vram2_total") else ""
+            )
+            return (
                 f"SYSTEM: CPU {s['cpu']}% · "
                 f"RAM {s['ram_used']}/{s['ram_total']} GB · "
-                f"VRAM {s['vram_used']}/{s['vram_total']} GB ({vram_pct}%) · "
-                f"GPU {s['gpu']}% · {s['gpu_temp']}°C\n"
+                f"GPU1 {s['gpu']}% {s['vram_used']}/{s['vram_total']} GB VRAM ({vram_pct}%) {s['gpu_temp']}°C"
+                f"{gpu2_part}\n"
             )
     except Exception:
-        monitor_context = ""
+        pass
+    return ""
 
-    # Sticky notes context
-    notes_context = ""
+
+def _ctx_notes() -> str:
     try:
         import sticky_notes as _sn
-        notes_context = _sn.format_for_prompt() + "\n" if _sn._notes else ""
+        return _sn.format_for_prompt() + "\n" if _sn._notes else ""
     except Exception:
-        notes_context = ""
+        return ""
 
-    # Live images context — filenames only when gallery is open (avoids hallucination from filenames)
-    images_context = ""
+
+def _ctx_images() -> str:
     try:
         import images as _img
         cat = _img._catalog
         if cat:
             if _widget_state.get("images"):
                 recent = ", ".join(c["filename"] for c in cat[:4])
-                images_context = f"IMAGES: {len(cat)} photos in gallery. Most recent: {recent}.\n"
-            else:
-                images_context = f"IMAGES: {len(cat)} photos in gallery (panel closed).\n"
-        else:
-            images_context = "IMAGES: Gallery is empty or folder not found.\n"
+                return f"IMAGES: {len(cat)} photos in gallery. Most recent: {recent}.\n"
+            return f"IMAGES: {len(cat)} photos in gallery (panel closed).\n"
+        return "IMAGES: Gallery is empty or folder not found.\n"
     except Exception:
-        images_context = ""
+        return ""
 
-    # ComfyUI / image generation context
-    comfy_ctx = (
+
+def _ctx_comfy() -> str:
+    if not _comfyui_workflow:
+        return ""
+    return (
         "IMAGE GENERATION: ComfyUI workflow loaded. "
-        "Use generate_image(description) to create images — describe the scene/situation. "
-        "Characters (chrissyc + poppydid) are baked into the workflow. "
+        "Use generate_image(description) to create images — describe the scene/subject/setting in detail. "
         "ComfyUI must be running in Stability Matrix.\n"
-        if _comfyui_workflow else ""
     )
 
-    # Visual emotion context — from real-time camera analysis
-    emotion_context = ""
+
+def _ctx_emotion() -> str:
     try:
         import vision as _vis
         em       = _vis._last_emotion
@@ -860,26 +852,70 @@ async def build_system_prompt(messages: list[dict] = None) -> str:
         conf     = em.get("confidence", 0.0)
         display  = _vis._EMOTION_DISPLAY.get(dominant, dominant)
         if dominant != "neutral" and conf >= 0.40:
-            pct = int(conf * 100)
-            emotion_context = f"VISUAL READ: Tyler appears {display} ({pct}% confidence from camera).\n"
-        else:
-            emotion_context = "VISUAL READ: Tyler appears calm/neutral.\n"
+            return f"VISUAL READ: Tyler appears {display} ({int(conf * 100)}% confidence from camera).\n"
+        return "VISUAL READ: Tyler appears calm/neutral.\n"
     except Exception:
-        emotion_context = ""
+        return ""
 
-    # Map state
-    map_ctx = f"MAP: {'Full-screen tactical map is active.' if _map_visible else 'Map is closed.'}\n"
 
-    # Widget state — MAYA knows what's open so she can act accurately
-    open_widgets  = [k for k, v in _widget_state.items() if v and k != "map"]
+def _ctx_widgets() -> str:
+    map_ctx        = f"MAP: {'Full-screen tactical map is active.' if _map_visible else 'Map is closed.'}\n"
+    open_widgets   = [k for k, v in _widget_state.items() if v     and k != "map"]
     closed_widgets = [k for k, v in _widget_state.items() if not v and k != "map"]
-    widget_context = (
+    return (
         f"UI PANELS — open: {', '.join(open_widgets) if open_widgets else 'none'}  |  "
         f"closed: {', '.join(closed_widgets) if closed_widgets else 'none'}.\n"
-        + map_ctx +
-        "If Tyler says a panel isn't open or isn't closed, trust what he says over this state "
-        "and call show_widget to correct it.\n"
+        + map_ctx
+        + "If Tyler says a panel isn't open or isn't closed, trust what he says over this state "
+          "and call show_widget to correct it.\n"
     )
+
+
+def _ctx_dates() -> str:
+    from datetime import datetime, timedelta
+    now       = datetime.now()
+    today_iso = now.strftime("%Y-%m-%d")
+    return (
+        f"TODAY: {today_iso} ({now.strftime('%A')})\n"
+        + "\n".join(
+            f"{(now + timedelta(days=i)).strftime('%A')}: {(now + timedelta(days=i)).strftime('%Y-%m-%d')}"
+            for i in range(1, 8)
+        ) + "\n"
+    )
+
+
+_PROMPT_STATIC_CACHE: "tuple[float, str] | None" = None
+_PROMPT_STATIC_TTL = 8.0   # seconds — rebuild static context at most every 8s
+
+async def build_system_prompt(messages: list[dict] = None) -> str:
+    import memory as _mem
+    from datetime import datetime
+    import time as _time
+
+    global _PROMPT_STATIC_CACHE
+    now = datetime.now()
+    dt  = now.strftime("%A, %d %B %Y — %H:%M")
+
+    # Cache the expensive-to-build static context sections
+    now_ts = _time.monotonic()
+    if _PROMPT_STATIC_CACHE and (now_ts - _PROMPT_STATIC_CACHE[0]) < _PROMPT_STATIC_TTL:
+        static_block = _PROMPT_STATIC_CACHE[1]
+    else:
+        dates_ctx      = _ctx_dates()
+        spotify_context = _ctx_spotify()
+        weather_context = _ctx_weather()
+        monitor_context = _ctx_monitor()
+        notes_context   = _ctx_notes()
+        images_context  = _ctx_images()
+        comfy_ctx       = _ctx_comfy()
+        emotion_context = _ctx_emotion()
+        widget_context  = _ctx_widgets()
+        static_block = (dates_ctx, spotify_context, weather_context, monitor_context,
+                        notes_context, images_context, comfy_ctx, emotion_context, widget_context)
+        _PROMPT_STATIC_CACHE = (now_ts, static_block)
+
+    (dates_ctx, spotify_context, weather_context, monitor_context,
+     notes_context, images_context, comfy_ctx, emotion_context, widget_context) = static_block
 
     ctx   = await _mem.format_context(companion=bool(_active_mode_name), messages=messages)
     block = ctx + "\n" if ctx else ""
@@ -925,8 +961,8 @@ async def build_system_prompt(messages: list[dict] = None) -> str:
 # ── Global state ──────────────────────────────────────────────────────────────
 # asyncio objects initialised in main() to avoid 3.10+ deprecation warning
 
-whisper_model = None   # base.en  — all transcription (wake word + queries)
-tts_model     = None   # F5-TTS  (None if load fails → silent mode)
+whisper_model = None   # loaded in load_models() — model size from STT_MODEL_SIZE constant
+tts_model     = None   # F5-TTS loaded in load_models() (None if load fails → silent mode)
 
 _audio_stream  = None
 _capture_rate  = SAMPLE_RATE
@@ -1044,7 +1080,10 @@ _active_mode_prompt: "str | None" = None
 
 
 def load_mode(name: str) -> str:
-    return (MODES_DIR / f"{name}.txt").read_text(encoding="utf-8").strip()
+    path = MODES_DIR / f"{name}.txt"
+    if not path.exists():
+        raise FileNotFoundError(f"Mode not found: {name}")
+    return path.read_text(encoding="utf-8").strip()
 
 
 def _active_model() -> str:
@@ -1069,17 +1108,66 @@ def switch_mode(name: str) -> str:
 
 # ── Model loading ─────────────────────────────────────────────────────────────
 
+def _log_gpu_inventory() -> None:
+    """Log all detected CUDA GPUs so the user can verify device ordering."""
+    try:
+        import torch
+        if not torch.cuda.is_available():
+            log("[maya] CUDA not available — running on CPU")
+            return
+        count = torch.cuda.device_count()
+        log(f"[maya] {count} CUDA GPU(s) detected (ordering: PCI_BUS_ID):")
+        for i in range(count):
+            name  = torch.cuda.get_device_name(i)
+            vram  = round(torch.cuda.get_device_properties(i).total_memory / 1e9, 1)
+            log(f"[maya]   cuda:{i} — {name} ({vram} GB)")
+    except Exception as e:
+        log(f"[maya] GPU inventory failed: {e}")
+
+
+def _resolve_gpu(config_key: str, default: int = 0) -> str:
+    """Read a gpu index from config.json and return a cuda device string.
+    Falls back to cuda:0 if the requested GPU doesn't exist."""
+    try:
+        import torch
+        cfg_path = Path(__file__).parent / "models/config.json"
+        if cfg_path.exists():
+            cfg     = json.loads(cfg_path.read_text(encoding="utf-8"))
+            gpu_idx = cfg.get(config_key, default)
+            if isinstance(gpu_idx, int) and torch.cuda.is_available():
+                count = torch.cuda.device_count()
+                if gpu_idx < count:
+                    return f"cuda:{gpu_idx}"
+                log(f"[maya] {config_key}={gpu_idx} not available "
+                    f"(only {count} GPU(s) detected) — falling back to cuda:0")
+    except Exception as e:
+        log(f"[maya] _resolve_gpu({config_key}) error: {e}")
+    return "cuda"   # cuda:0
+
+
 def load_models() -> None:
     global whisper_model, tts_model
 
+    import torch
     from faster_whisper import WhisperModel
 
-    log(f"[maya] loading faster-whisper {STT_MODEL_SIZE}...")
+    # STT and TTS can be on different GPUs — STT is lightweight (fine on 4060),
+    # TTS (F5-TTS diffusion model) needs the fast GPU for acceptable latency.
+    stt_device = _resolve_gpu("stt_gpu", default=0)
+    tts_device = _resolve_gpu("tts_gpu", default=0)
+
+    # faster-whisper uses device_index rather than "cuda:N"
+    wh_index = int(stt_device.split(":")[1]) if stt_device.startswith("cuda:") else 0
+
+    log(f"[maya] loading faster-whisper {STT_MODEL_SIZE} on {stt_device}...")
     try:
-        whisper_model = WhisperModel(STT_MODEL_SIZE, device="cuda", compute_type="float16")
-        log(f"[maya] whisper ({STT_MODEL_SIZE}) on CUDA")
+        whisper_model = WhisperModel(
+            STT_MODEL_SIZE, device="cuda",
+            device_index=wh_index, compute_type="float16",
+        )
+        log(f"[maya] whisper ({STT_MODEL_SIZE}) on {stt_device}")
     except Exception as e:
-        log(f"[maya] whisper CUDA failed ({e}), falling back to CPU")
+        log(f"[maya] whisper {stt_device} failed ({e}), falling back to CPU")
         try:
             whisper_model = WhisperModel(STT_MODEL_SIZE, device="cpu", compute_type="int8")
             log(f"[maya] whisper ({STT_MODEL_SIZE}) on CPU")
@@ -1087,9 +1175,9 @@ def load_models() -> None:
             log(f"[maya] whisper CPU also failed ({e2}) — STT disabled")
             whisper_model = None
 
-    log("[maya] loading F5-TTS...")
+    log(f"[maya] loading F5-TTS on {tts_device}...")
     try:
-        import sys, io, torch
+        import sys, io
 
         os.environ["WANDB_MODE"]   = "disabled"
         os.environ["WANDB_SILENT"] = "true"
@@ -1113,7 +1201,7 @@ def load_models() -> None:
         _ta.load = _ta_load_sf
 
         from f5_tts.api import F5TTS
-        device    = "cuda" if torch.cuda.is_available() else "cpu"
+        device    = tts_device if torch.cuda.is_available() else "cpu"
         tts_model = F5TTS(device=device)
         log(f"[maya] F5-TTS on {device}")
 
@@ -1126,6 +1214,8 @@ def load_models() -> None:
 def _audio_callback(indata, frames, time, status) -> None:
     # Called from sounddevice's C callback thread.
     # queue.Queue.put_nowait is the only safe asyncio-free operation here.
+    if status:
+        return  # buffer overrun / underrun — skip invalid frame
     if _audio_q is not None:
         _audio_q.put_nowait(indata[:, 0].copy())
 
@@ -1376,7 +1466,7 @@ async def _start_conv_timer(ws, timeout: float = CONV_TIMEOUT_SECS) -> None:
                 await current_ws.send(json.dumps({"type": "ready"}))
                 history.append({"role": "assistant", "content": goodbye})
 
-    _conv_timer = asyncio.ensure_future(_expire())
+    _conv_timer = asyncio.create_task(_expire())
 
 
 def _drain_audio_q() -> None:
@@ -1421,8 +1511,21 @@ async def _vad_inner(loop: asyncio.AbstractEventLoop) -> None:
     in_speech:     bool             = False
     silence_n:     int              = 0
 
+    stream_check_counter = 0
     while True:
         await asyncio.sleep(VAD_CHUNK_SECS)
+
+        # Periodically check if the audio stream is still alive (every ~5 seconds)
+        stream_check_counter += 1
+        if stream_check_counter >= int(5.0 / VAD_CHUNK_SECS):
+            stream_check_counter = 0
+            if _audio_stream and not getattr(_audio_stream, 'active', True):
+                log("[maya] audio stream died — attempting to reconnect microphone...")
+                try:
+                    start_audio_stream()
+                    log("[maya] microphone reconnected")
+                except Exception as e:
+                    log(f"[maya] microphone reconnect failed: {e}")
 
         # Drain audio queue into local accumulator (thread-safe)
         new: list[np.ndarray] = []
@@ -1432,7 +1535,8 @@ async def _vad_inner(loop: asyncio.AbstractEventLoop) -> None:
         except _queue.Empty:
             pass
         if new:
-            accum = np.concatenate([accum, *new]) if len(accum) else np.concatenate(new)
+            parts = ([accum] if len(accum) else []) + new
+            accum = np.concatenate(parts)
 
         # Drop audio while responding or before any client connects
         if _respond_lock.locked() or not _active_ws:
@@ -1473,7 +1577,7 @@ async def _vad_inner(loop: asyncio.AbstractEventLoop) -> None:
                         if transcript:
                             log(f"[maya] heard: {transcript!r}")
                             # Fire-and-forget so VAD loop isn't blocked
-                            asyncio.ensure_future(
+                            asyncio.create_task(
                                 _safe_on_transcript(transcript, speech, loop)
                             )
                     speech_chunks = []
@@ -2110,8 +2214,148 @@ async def analyze_screen(image_b64: str) -> str:
     return "Screen analysis unavailable — is qwen2.5vl:7b pulled?"
 
 
+# ── Tool domain handlers ──────────────────────────────────────────────────────
+
+async def _tool_spotify(name: str, params: dict, _ws) -> str:
+    try:
+        import spotify as _sp
+        cfg = _sp.load_config()
+        if not cfg:
+            return "Spotify not configured."
+        cid, cs = cfg["client_id"], cfg["client_secret"]
+        if name == "spotify_control":
+            await _sp.control(params.get("action", ""), cid, cs)
+            return f"Spotify: {params.get('action', '')}."
+        if name == "spotify_play_track":
+            results = await _sp.search_tracks(params.get("query", ""), cid, cs)
+            if not results:
+                return "No results found on Spotify."
+            ok = await _sp.play_uri(results[0]["uri"], cid, cs)
+            if ok:
+                return f"Playing \"{results[0]['track']}\" by {results[0]['artist']}."
+            return f"Found \"{results[0]['track']}\" but couldn't play it — is Spotify open on your PC?"
+    except Exception as e:
+        return f"Spotify failed: {e}"
+    return "Spotify not configured."
+
+
+async def _tool_timer(name: str, params: dict, websocket) -> str:
+    try:
+        import timer as _tim
+    except ImportError:
+        return "Timer module not loaded."
+    if name == "set_timer":
+        tname   = params.get("name", "timer").strip().lower()
+        seconds = int(params.get("seconds", 60))
+        _tim.create(tname, seconds)
+        _widget_state["timer"] = True
+        await websocket.send(json.dumps({"type": "action", "action": "show_widget", "widget": "timer", "visible": True}))
+        m, s = divmod(seconds, 60)
+        return f"Timer set: {tname} — {m:02d}:{s:02d}."
+    if name == "cancel_timer":  return _tim.cancel(params.get("name", ""))
+    if name == "pause_timer":   return _tim.pause(params.get("name", ""))
+    if name == "resume_timer":  return _tim.resume(params.get("name", ""))
+    if name == "list_timers":   return _tim.list_all()
+    return f"Unknown timer tool: {name}"
+
+
+async def _tool_notes(name: str, params: dict, websocket) -> str:
+    try:
+        import sticky_notes as _sn
+    except ImportError:
+        return "Notes module not loaded."
+    _show = lambda: asyncio.create_task(_sn.broadcast_notes()) or asyncio.create_task(
+        websocket.send(json.dumps({"type": "action", "action": "show_widget", "widget": "sticky_notes", "visible": True}))
+    )
+    if name == "add_note":
+        text    = params.get("text", "").strip()
+        note_id = _sn.add(text)
+        _widget_state["sticky_notes"] = True
+        _show()
+        return f"Noted (id: {note_id[:8]})."
+    if name == "update_note":
+        ok = _sn.update(params.get("id", ""), params.get("text", ""))
+        if ok:
+            _widget_state["sticky_notes"] = True
+            _show()
+        return "Note updated." if ok else "Note not found."
+    if name == "delete_note":
+        ok = _sn.delete(params.get("id", ""))
+        if ok:
+            asyncio.create_task(_sn.broadcast_notes())
+        return "Note deleted." if ok else "Note not found."
+    if name == "list_notes":
+        notes = _sn.get_all()
+        if not notes:
+            return "No notes saved."
+        return "\n".join(f"[{n['id'][:8]}] {n['text']}" for n in notes)
+    return f"Unknown notes tool: {name}"
+
+
+async def _tool_calendar(name: str, params: dict, websocket) -> str:
+    try:
+        import calendar_service as _cal
+    except ImportError:
+        return "Calendar module not loaded."
+    _open_cal = lambda: asyncio.create_task(
+        websocket.send(json.dumps({"type": "action", "action": "show_widget", "widget": "calendar", "visible": True}))
+    )
+    if name == "get_calendar_events":
+        date   = params.get("date", "")
+        events = _cal.get_events_for_date(date) if date else _cal.get_today_events()
+        _widget_state["calendar"] = True
+        _open_cal()
+        if not events:
+            return f"No events on {'that date' if date else 'today'}."
+        return "\n".join(f"- {e['title']} at {e['start']} (id:{e['id'][:12]})" for e in events)
+    if name == "create_calendar_event":
+        result = _cal.create_event(params.get("title",""), params.get("start",""), params.get("end",""), params.get("description",""))
+        _widget_state["calendar"] = True
+        _open_cal()
+        return f"Event created (id: {result[:12] if 'Failed' not in result else result})."
+    if name == "update_calendar_event":
+        return _cal.update_event(params.get("event_id",""), params.get("title",""), params.get("start",""), params.get("end",""), params.get("description",""))
+    if name == "delete_calendar_event":
+        return _cal.delete_event(params.get("event_id", ""))
+    if name == "authenticate_calendar":
+        loop   = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, _cal.authenticate)
+        if result == "done":
+            asyncio.create_task(_cal._push_update())
+            return "Calendar authenticated and connected."
+        return f"Calendar auth failed: {result}"
+    return f"Unknown calendar tool: {name}"
+
+
+async def _tool_memory(name: str, params: dict, _ws) -> str:
+    import memory as _mem
+    if name == "save_memory":       return await _mem.save_memory_fact(params.get("category","general"), params.get("fact",""))
+    if name == "forget_memory":     return _mem.forget_memory_fact(params.get("fact",""))
+    if name == "search_memory":     return await _mem.search_session_logs(params.get("query",""))
+    if name == "get_memory_status": return _mem.get_memory_status()
+    if name == "update_project":    return _mem.update_project(params.get("name",""), params.get("status"), params.get("note"))
+    if name == "close_project":     return _mem.close_project(params.get("name",""))
+    if name == "list_projects":     return _mem.list_projects()
+    if name == "regenerate_profile":return await _mem.regenerate_profile_tool()
+    return f"Unknown memory tool: {name}"
+
+
 async def execute_tool(name: str, params: dict, websocket) -> str:
     global _screen_b64, _conv_state, _dev_log_mode, _dev_log_before_webcam, _map_visible
+
+    # ── Dispatch to domain handlers ───────────────────────────────────────────
+    if name in ("spotify_control", "spotify_play_track"):
+        return await _tool_spotify(name, params, websocket)
+    if name in ("set_timer", "cancel_timer", "pause_timer", "resume_timer", "list_timers"):
+        return await _tool_timer(name, params, websocket)
+    if name in ("add_note", "update_note", "delete_note", "list_notes"):
+        return await _tool_notes(name, params, websocket)
+    if name in ("get_calendar_events", "create_calendar_event", "update_calendar_event",
+                "delete_calendar_event", "authenticate_calendar"):
+        return await _tool_calendar(name, params, websocket)
+    if name in ("save_memory", "forget_memory", "search_memory", "get_memory_status",
+                "update_project", "close_project", "list_projects", "regenerate_profile"):
+        return await _tool_memory(name, params, websocket)
 
     if name == "show_widget":
         widget  = params.get("widget", "")
@@ -2131,35 +2375,6 @@ async def execute_tool(name: str, params: dict, websocket) -> str:
             "visible": visible,
         }))
         return f"{'Opened' if visible else 'Closed'} the {widget} panel."
-
-    elif name == "spotify_control":
-        try:
-            import spotify as _sp
-            cfg = _sp.load_config()
-            if cfg:
-                action = params.get("action", "")
-                await _sp.control(action, cfg["client_id"], cfg["client_secret"])
-                return f"Spotify: {action}."
-        except Exception as e:
-            return f"Spotify control failed: {e}"
-        return "Spotify not configured."
-
-    elif name == "spotify_play_track":
-        try:
-            import spotify as _sp
-            cfg = _sp.load_config()
-            if cfg:
-                q       = params.get("query", "")
-                results = await _sp.search_tracks(q, cfg["client_id"], cfg["client_secret"])
-                if results:
-                    ok = await _sp.play_uri(results[0]["uri"], cfg["client_id"], cfg["client_secret"])
-                    if ok:
-                        return f"Playing \"{results[0]['track']}\" by {results[0]['artist']}."
-                    return f"Found \"{results[0]['track']}\" but couldn't play it — is Spotify open on your PC?"
-                return "No results found on Spotify."
-        except Exception as e:
-            return f"Spotify play failed: {e}"
-        return "Spotify not configured."
 
     elif name == "capture_screen":
         _screen_event.clear()
@@ -2229,7 +2444,7 @@ async def execute_tool(name: str, params: dict, websocket) -> str:
         _widget_state["imagegen"] = True
         await websocket.send(json.dumps({"type": "action", "action": "show_widget", "widget": "imagegen", "visible": True}))
         # Fire generation in background via the comfyui module (it broadcasts to the widget's WS)
-        asyncio.ensure_future(_run_comfyui_generation(description, websocket))
+        asyncio.create_task(_run_comfyui_generation(description, websocket))
         return (
             f"Opening the image generation widget and starting '{description}'. "
             "Watch the progress there — I'll announce when it's done."
@@ -2292,154 +2507,6 @@ async def execute_tool(name: str, params: dict, websocket) -> str:
         threading.Timer(2.5, _shutdown).start()
         return "Shutting down."
 
-    # ── Timer tools ───────────────────────────────────────────────────────────
-    elif name == "set_timer":
-        try:
-            import timer as _tim
-            tname   = params.get("name", "timer").strip().lower()
-            seconds = int(params.get("seconds", 60))
-            _tim.create(tname, seconds)
-            _widget_state["timer"] = True
-            await websocket.send(json.dumps({"type": "action", "action": "show_widget", "widget": "timer", "visible": True}))
-            m, s = divmod(seconds, 60)
-            return f"Timer set: {tname} — {m:02d}:{s:02d}."
-        except ImportError:
-            return "Timer module not loaded."
-
-    elif name == "cancel_timer":
-        try:
-            import timer as _tim
-            return _tim.cancel(params.get("name", ""))
-        except ImportError:
-            return "Timer module not loaded."
-
-    elif name == "pause_timer":
-        try:
-            import timer as _tim
-            return _tim.pause(params.get("name", ""))
-        except ImportError:
-            return "Timer module not loaded."
-
-    elif name == "resume_timer":
-        try:
-            import timer as _tim
-            return _tim.resume(params.get("name", ""))
-        except ImportError:
-            return "Timer module not loaded."
-
-    elif name == "list_timers":
-        try:
-            import timer as _tim
-            return _tim.list_all()
-        except ImportError:
-            return "Timer module not loaded."
-
-    # ── Sticky notes tools ────────────────────────────────────────────────────
-    elif name == "add_note":
-        try:
-            import sticky_notes as _sn
-            text    = params.get("text", "").strip()
-            note_id = _sn.add(text)
-            asyncio.ensure_future(_sn.broadcast_notes())
-            _widget_state["sticky_notes"] = True
-            await websocket.send(json.dumps({"type": "action", "action": "show_widget", "widget": "sticky_notes", "visible": True}))
-            return f"Noted (id: {note_id[:8]})."
-        except ImportError:
-            return "Notes module not loaded."
-
-    elif name == "update_note":
-        try:
-            import sticky_notes as _sn
-            ok = _sn.update(params.get("id", ""), params.get("text", ""))
-            if ok:
-                asyncio.ensure_future(_sn.broadcast_notes())
-                _widget_state["sticky_notes"] = True
-                await websocket.send(json.dumps({"type": "action", "action": "show_widget", "widget": "sticky_notes", "visible": True}))
-            return "Note updated." if ok else "Note not found."
-        except ImportError:
-            return "Notes module not loaded."
-
-    elif name == "delete_note":
-        try:
-            import sticky_notes as _sn
-            ok = _sn.delete(params.get("id", ""))
-            if ok:
-                asyncio.ensure_future(_sn.broadcast_notes())
-            return "Note deleted." if ok else "Note not found."
-        except ImportError:
-            return "Notes module not loaded."
-
-    elif name == "list_notes":
-        try:
-            import sticky_notes as _sn
-            notes = _sn.get_all()
-            if not notes:
-                return "No notes saved."
-            return "\n".join(f"[{n['id'][:8]}] {n['text']}" for n in notes)
-        except ImportError:
-            return "Notes module not loaded."
-
-    # ── Calendar tools ────────────────────────────────────────────────────────
-    elif name == "get_calendar_events":
-        try:
-            import calendar_service as _cal
-            date = params.get("date", "")
-            events = _cal.get_events_for_date(date) if date else _cal.get_today_events()
-            _widget_state["calendar"] = True
-            await websocket.send(json.dumps({"type": "action", "action": "show_widget", "widget": "calendar", "visible": True}))
-            if not events:
-                return f"No events on {'that date' if date else 'today'}."
-            return "\n".join(f"- {e['title']} at {e['start']} (id:{e['id'][:12]})" for e in events)
-        except ImportError:
-            return "Calendar module not loaded."
-
-    elif name == "create_calendar_event":
-        try:
-            import calendar_service as _cal
-            result = _cal.create_event(
-                params.get("title", ""),
-                params.get("start", ""),
-                params.get("end",   ""),
-                params.get("description", ""),
-            )
-            _widget_state["calendar"] = True
-            await websocket.send(json.dumps({"type": "action", "action": "show_widget", "widget": "calendar", "visible": True}))
-            return f"Event created (id: {result[:12] if 'Failed' not in result else result})."
-        except ImportError:
-            return "Calendar module not loaded."
-
-    elif name == "update_calendar_event":
-        try:
-            import calendar_service as _cal
-            return _cal.update_event(
-                params.get("event_id", ""),
-                params.get("title",       ""),
-                params.get("start",       ""),
-                params.get("end",         ""),
-                params.get("description", ""),
-            )
-        except ImportError:
-            return "Calendar module not loaded."
-
-    elif name == "delete_calendar_event":
-        try:
-            import calendar_service as _cal
-            return _cal.delete_event(params.get("event_id", ""))
-        except ImportError:
-            return "Calendar module not loaded."
-
-    elif name == "authenticate_calendar":
-        try:
-            import calendar_service as _cal
-            loop   = asyncio.get_running_loop()
-            result = await loop.run_in_executor(None, _cal.authenticate)
-            if result == "done":
-                asyncio.ensure_future(_cal._push_update())
-                return "Calendar authenticated and connected."
-            return f"Calendar auth failed: {result}"
-        except ImportError:
-            return "Calendar module not loaded."
-
     # ── Notification tool ─────────────────────────────────────────────────────
     elif name == "send_notification":
         try:
@@ -2467,38 +2534,6 @@ async def execute_tool(name: str, params: dict, websocket) -> str:
         result = switch_mode(params.get("mode", "default"))
         log(f"[mode] {result}")
         return result
-
-    elif name == "save_memory":
-        import memory as _mem
-        return await _mem.save_memory_fact(params.get("category", "general"), params.get("fact", ""))
-
-    elif name == "forget_memory":
-        import memory as _mem
-        return _mem.forget_memory_fact(params.get("fact", ""))
-
-    elif name == "search_memory":
-        import memory as _mem
-        return await _mem.search_session_logs(params.get("query", ""))
-
-    elif name == "get_memory_status":
-        import memory as _mem
-        return _mem.get_memory_status()
-
-    elif name == "update_project":
-        import memory as _mem
-        return _mem.update_project(params.get("name", ""), params.get("status"), params.get("note"))
-
-    elif name == "close_project":
-        import memory as _mem
-        return _mem.close_project(params.get("name", ""))
-
-    elif name == "list_projects":
-        import memory as _mem
-        return _mem.list_projects()
-
-    elif name == "regenerate_profile":
-        import memory as _mem
-        return await _mem.regenerate_profile_tool()
 
     return f"Unknown tool: {name}"
 
@@ -2713,7 +2748,7 @@ async def _run_comfyui_generation(description: str, originating_ws) -> None:
                     import images as _img
                     _img._catalog    = await _img._scan_folder()
                     _img._last_mtime = _img._folder_mtime()
-                    asyncio.ensure_future(_img._broadcast(_img._catalog_msg()))
+                    asyncio.create_task(_img._broadcast(_img._catalog_msg()))
                 # Open the gallery directly to the new image
                 _widget_state["images"] = True
                 await ws.send(json.dumps({
@@ -2742,7 +2777,7 @@ async def _greet(websocket, loop: asyncio.AbstractEventLoop) -> None:
         import notify as _notify
         cal_hint = _cal.format_today_for_greeting()
         if cal_hint and hour < 14:   # morning greeting only
-            asyncio.ensure_future(_notify.send(
+            asyncio.create_task(_notify.send(
                 "☀️ Good morning",
                 cal_hint.replace("Today's calendar: ", ""),
             ))
@@ -2771,7 +2806,7 @@ async def _greet(websocket, loop: asyncio.AbstractEventLoop) -> None:
 
 
 async def handle_client(websocket) -> None:
-    global greeted, _active_ws, _screen_b64, history, _conv_state
+    global greeted, _active_ws, _screen_b64, history, _conv_state, _last_image_b64
 
     log("[maya] client connected")
     _active_ws  = websocket
@@ -2888,7 +2923,7 @@ async def handle_client(websocket) -> None:
                 snap       = list(history)
                 is_companion = bool(_active_mode_name)
                 _mem.save_log(snap, companion=is_companion)
-                asyncio.ensure_future(_mem.extract_and_save(snap, companion=is_companion))
+                asyncio.create_task(_mem.extract_and_save(snap, companion=is_companion))
 
 
 async def _respond(websocket, loop: asyncio.AbstractEventLoop) -> None:
@@ -2900,7 +2935,7 @@ async def _respond(websocket, loop: asyncio.AbstractEventLoop) -> None:
             cleaned, image_descs = _extract_image_triggers(full, websocket)
             for desc in image_descs:
                 log(f"[companion] auto-generate: {desc[:80]}")
-                asyncio.ensure_future(_run_comfyui_generation(desc, websocket))
+                asyncio.create_task(_run_comfyui_generation(desc, websocket))
             if image_descs:
                 full = cleaned
 
@@ -2909,7 +2944,7 @@ async def _respond(websocket, loop: asyncio.AbstractEventLoop) -> None:
             # Mid-session incremental extraction every 10 messages
             if len(history) % 10 == 0 and len(history) >= 10:
                 import memory as _mem
-                asyncio.ensure_future(
+                asyncio.create_task(
                     _mem.extract_facts_incremental(history[-10:], companion=bool(_active_mode_name))
                 )
         await websocket.send(json.dumps({"type": "done"}))
@@ -2939,11 +2974,29 @@ def kill_existing(port: int) -> None:
         log(f"[maya] kill_existing({port}): {e}")
 
 
+SESSION_TOKEN_FILE = Path(__file__).parent / "models/.session_token"
+_session_token: str = ""
+
+
+def _generate_session_token() -> str:
+    """Generate a random session token, write to disk for Electron to read."""
+    import secrets
+    token = secrets.token_hex(32)
+    SESSION_TOKEN_FILE.parent.mkdir(exist_ok=True)
+    SESSION_TOKEN_FILE.write_text(token, encoding="utf-8")
+    return token
+
+
 async def main() -> None:
-    global _audio_q, _respond_lock, _screen_event
+    global _audio_q, _respond_lock, _screen_event, _session_token
 
     LOG.write_text("", encoding="utf-8")
     log("[maya] starting...")
+    _session_token = _generate_session_token()
+
+    # Fix CUDA device ordering so indices match NVML/pynvml (avoids cuda:0 vs cuda:1 mismatch)
+    os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+    _log_gpu_inventory()
 
     # Always start in default mode regardless of last session
     global _active_mode_name, _active_mode_prompt
@@ -3004,9 +3057,9 @@ async def main() -> None:
     # Vision server (face recognition + presence detection)
     try:
         import vision as _vision
-        tasks.append(asyncio.ensure_future(
-            loop.run_in_executor(None, _vision.load_vision_models)
-        ))
+        async def _load_vision():
+            await loop.run_in_executor(None, _vision.load_vision_models)
+        tasks.append(asyncio.create_task(_load_vision()))
         vision_server_coro = websockets.serve(_vision.handle_vision_client, "127.0.0.1", 8766)
     except ImportError:
         vision_server_coro = None
@@ -3014,7 +3067,7 @@ async def main() -> None:
     try:
         import spotify as _spotify
         kill_existing(8767)
-        tasks.append(asyncio.ensure_future(_spotify.run()))
+        tasks.append(asyncio.create_task(_spotify.run()))
         log("[maya] spotify server starting...")
     except ImportError:
         pass
@@ -3022,7 +3075,7 @@ async def main() -> None:
     try:
         import weather as _weather
         kill_existing(8768)
-        tasks.append(asyncio.ensure_future(_weather.run()))
+        tasks.append(asyncio.create_task(_weather.run()))
         log("[maya] weather server starting...")
     except ImportError:
         pass
@@ -3030,7 +3083,7 @@ async def main() -> None:
     try:
         import comfyui as _comfyui_mod
         kill_existing(8770)
-        tasks.append(asyncio.ensure_future(_comfyui_mod.run()))
+        tasks.append(asyncio.create_task(_comfyui_mod.run()))
         log("[maya] comfyui widget server starting (port 8770)...")
     except Exception as e:
         log(f"[maya] comfyui server failed to start: {e}")
@@ -3038,7 +3091,7 @@ async def main() -> None:
     try:
         import images as _images_mod
         kill_existing(8769)
-        tasks.append(asyncio.ensure_future(_images_mod.run()))
+        tasks.append(asyncio.create_task(_images_mod.run()))
         log("[maya] images server starting...")
     except ImportError:
         pass
@@ -3046,25 +3099,26 @@ async def main() -> None:
     try:
         import system_monitor as _sysmon
         kill_existing(8771)
-        tasks.append(asyncio.ensure_future(_sysmon.run()))
+        tasks.append(asyncio.create_task(_sysmon.run()))
         log("[maya] system monitor server starting...")
     except ImportError:
         pass
 
+    _timer_fire_queue: asyncio.Queue | None = None
     try:
         import timer as _timer_mod
         kill_existing(8772)
-        _timer_fire_queue: asyncio.Queue = asyncio.Queue()
+        _timer_fire_queue = asyncio.Queue()
         _timer_mod._fire_queue = _timer_fire_queue
-        tasks.append(asyncio.ensure_future(_timer_mod.run()))
+        tasks.append(asyncio.create_task(_timer_mod.run()))
         log("[maya] timer server starting...")
-    except ImportError:
+    except Exception:
         _timer_fire_queue = None
 
     try:
         import sticky_notes as _sn_mod
         kill_existing(8773)
-        tasks.append(asyncio.ensure_future(_sn_mod.run()))
+        tasks.append(asyncio.create_task(_sn_mod.run()))
         log("[maya] sticky notes server starting...")
     except ImportError:
         pass
@@ -3072,7 +3126,7 @@ async def main() -> None:
     try:
         import calendar_service as _cal_mod
         kill_existing(8774)
-        tasks.append(asyncio.ensure_future(_cal_mod.run()))
+        tasks.append(asyncio.create_task(_cal_mod.run()))
         log("[maya] calendar server starting...")
     except ImportError:
         pass
@@ -3080,7 +3134,7 @@ async def main() -> None:
     try:
         import news as _news_mod
         kill_existing(8775)
-        tasks.append(asyncio.ensure_future(_news_mod.run()))
+        tasks.append(asyncio.create_task(_news_mod.run()))
         log("[maya] news server starting...")
     except ImportError:
         pass
@@ -3101,7 +3155,7 @@ async def main() -> None:
                     await _notify.send("⚠️ MAYA", alert, priority="high")
             except Exception as e:
                 log(f"[maya] monitor alert error: {e}")
-    tasks.append(asyncio.ensure_future(_proactive_monitor_loop()))
+    tasks.append(asyncio.create_task(_proactive_monitor_loop()))
 
     # Timer completion → speech + notification
     async def _timer_completion_loop():
@@ -3136,7 +3190,7 @@ async def main() -> None:
             except Exception as e:
                 log(f"[maya] timer completion error: {e}")
     if _timer_fire_queue is not None:
-        tasks.append(asyncio.ensure_future(_timer_completion_loop()))
+        tasks.append(asyncio.create_task(_timer_completion_loop()))
 
     # Calendar event reminders — notify 15 minutes before any event
     async def _calendar_reminder_loop():
@@ -3189,10 +3243,10 @@ async def main() -> None:
                         pass
             except Exception as e:
                 log(f"[calendar] reminder error: {e}")
-    tasks.append(asyncio.ensure_future(_calendar_reminder_loop()))
+    tasks.append(asyncio.create_task(_calendar_reminder_loop()))
 
-    tasks.append(asyncio.ensure_future(_ensure_nsfw_model()))
-    tasks.append(asyncio.ensure_future(wake_word_loop(loop)))
+    tasks.append(asyncio.create_task(_ensure_nsfw_model()))
+    tasks.append(asyncio.create_task(wake_word_loop(loop)))
 
     servers = [websockets.serve(handle_client, "127.0.0.1", WS_PORT, max_size=20 * 1024 * 1024)]
     if vision_server_coro:

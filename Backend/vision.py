@@ -32,6 +32,13 @@ EMOTION_INTERVAL     = 3    # run emotion detection every N frames
 EMOTION_CONFIDENCE   = 0.35 # minimum confidence to report a non-neutral emotion
 FACE_PADDING         = 25   # pixels of padding around face crop for emotion
 
+# Face recognition thresholds (cosine similarity against InsightFace embeddings).
+# FACE_RECOG_FLOOR: minimum similarity to count as a match at all.
+# FACE_RECOG_RANGE: span above the floor that maps to 0–100% confidence.
+# Calibrated for the buffalo_l ArcFace model; adjust if recognition is unreliable.
+FACE_RECOG_FLOOR = 0.28
+FACE_RECOG_RANGE = 0.72
+
 _app              = None
 _tyler_embeddings: list = []
 _last_capture_at  = 0.0
@@ -216,8 +223,8 @@ def analyze_frame(b64_jpeg: str) -> dict:
         emb  = largest.normed_embedding
         best = max(float(np.dot(emb, ref)) for ref in _tyler_embeddings)
 
-        if best > 0.28:
-            confidence = round(min((best - 0.28) / 0.72, 1.0), 2)
+        if best > FACE_RECOG_FLOOR:
+            confidence = round(min((best - FACE_RECOG_FLOOR) / FACE_RECOG_RANGE, 1.0), 2)
             _maybe_auto_capture(img, largest, confidence)
             return {
                 "present":            True,
@@ -245,8 +252,11 @@ def analyze_frame(b64_jpeg: str) -> dict:
 
 # ── WebSocket server ──────────────────────────────────────────────────────────
 
+VISION_MIN_INTERVAL = 1.0   # seconds between analyses (server-side rate limit ≈ 1 fps)
+
 async def handle_vision_client(websocket) -> None:
     print("[vision] client connected", flush=True)
+    last_analysis = 0.0
     try:
         async for raw in websocket:
             try:
@@ -257,10 +267,21 @@ async def handle_vision_client(websocket) -> None:
             if msg.get("type") != "vision_frame":
                 continue
 
+            # Server-side rate limit — drop frames that arrive too quickly
+            now = time.time()
+            if now - last_analysis < VISION_MIN_INTERVAL:
+                continue
+            last_analysis = now
+
             try:
                 loop   = asyncio.get_running_loop()
-                result = await loop.run_in_executor(None, analyze_frame, msg.get("image", ""))
+                result = await asyncio.wait_for(
+                    loop.run_in_executor(None, analyze_frame, msg.get("image", "")),
+                    timeout=5.0,
+                )
                 await websocket.send(json.dumps({"type": "vision_update", **result}))
+            except asyncio.TimeoutError:
+                print("[vision] frame analysis timed out — skipping frame", flush=True)
             except websockets.exceptions.ConnectionClosed:
                 raise
             except Exception as e:

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, desktopCapturer, session } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, desktopCapturer, session, protocol } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 const { spawn } = require('child_process');
@@ -19,7 +19,7 @@ function createWindow() {
         webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
-            webSecurity: false,   // allows file:// image URLs from local filesystem
+            webSecurity: true,    // re-enabled; file:// images served via custom protocol
             webviewTag: true,     // enables <webview> element for the browser widget
             preload: path.join(__dirname, 'preload.js'),
         },
@@ -69,9 +69,24 @@ function createWindow() {
         }
     });
 
-    // Graceful shutdown triggered by MAYA's shutdown_system tool
-    ipcMain.handle('shutdown', () => {
-        backend?.kill();
+    // Graceful shutdown — tell backend to flush memory/session, then force-kill after 5s
+    ipcMain.handle('shutdown', async () => {
+        console.log('[main] shutdown requested — waiting for backend to flush...');
+        const forceKill = setTimeout(() => {
+            backend?.kill();
+            mainWindow?.close();
+            app.quit();
+        }, 5000);
+        try {
+            // Give backend a chance to save session logs before exiting
+            if (backend && backend.exitCode === null) {
+                await new Promise(resolve => {
+                    backend.once('exit', resolve);
+                    backend.kill('SIGTERM');
+                });
+            }
+        } catch (_) {}
+        clearTimeout(forceKill);
         mainWindow?.close();
         app.quit();
     });
@@ -81,7 +96,9 @@ function createWindow() {
         try {
             const devLogsDir = path.join(app.getPath('videos'), 'Dev Logs');
             if (!fs.existsSync(devLogsDir)) fs.mkdirSync(devLogsDir, { recursive: true });
-            const fullPath = path.join(devLogsDir, filename);
+            // Sanitise filename — no path traversal
+            const safeName = path.basename(String(filename)).replace(/[/\\]/g, '_');
+            const fullPath = path.join(devLogsDir, safeName);
             // data arrives as a Uint8Array or Buffer via Electron IPC structured clone
             const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
             fs.writeFileSync(fullPath, buf);
@@ -102,6 +119,10 @@ function createWindow() {
         ? path.join(backendDir, '.venv/Scripts/python.exe')
         : 'python';
 
+    if (!fs.existsSync(backendDir)) {
+        console.error('[main] Backend directory not found:', backendDir);
+    }
+
     backend = spawn(pythonExe, ['server.py'], {
         cwd: backendDir,
         stdio: 'pipe',
@@ -114,6 +135,21 @@ function createWindow() {
             mainWindow?.close();
             app.quit();
         }
+    });
+}
+
+// ── Custom file protocol — serves Pictures/Images without webSecurity: false ──
+function registerImageProtocol() {
+    protocol.registerFileProtocol('maya-images', (request, callback) => {
+        const filePath = decodeURIComponent(request.url.replace('maya-images://', ''));
+        // Restrict to the Pictures/Images folder only
+        const picturesDir = path.join(app.getPath('pictures'), 'Images');
+        const resolved    = path.resolve(picturesDir, filePath);
+        if (!resolved.startsWith(picturesDir)) {
+            callback({ error: -10 });  // BLOCKED — path traversal attempt
+            return;
+        }
+        callback({ path: resolved });
     });
 }
 
@@ -177,6 +213,8 @@ async function importYoutubeCookies(videoSession) {
 }
 
 app.whenReady().then(() => {
+    registerImageProtocol();
+
     // Configure browser session — Chrome UA + pre-accept common news site consent cookies
     try {
         const browserSession = session.fromPartition('persist:maya-browser');
@@ -226,7 +264,10 @@ app.whenReady().then(() => {
 
 app.on('will-quit', () => {
     globalShortcut.unregisterAll();
-    backend?.kill();
+    // Send SIGTERM to allow Python to flush logs before SIGKILL
+    if (backend && backend.exitCode === null) {
+        backend.kill('SIGTERM');
+    }
 });
 
 app.on('window-all-closed', () => {

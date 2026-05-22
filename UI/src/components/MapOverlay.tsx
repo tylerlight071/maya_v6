@@ -143,7 +143,8 @@ export default function MapOverlay({ visible, command }: MapOverlayProps) {
       setLocationLabel(null)
       map.flyTo({ center: GLOBE_CENTER, zoom: GLOBE_ZOOM, duration: 2500, essential: true })
     }
-  }, [command])  // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- command is an object with a stable `id`; only its content changes. Listing full deps would cause double-execution on each command object re-creation.
+  }, [command])
 
   function dropMarker(map: maplibregl.Map, lat: number, lng: number, label: string) {
     const el = document.createElement('div')

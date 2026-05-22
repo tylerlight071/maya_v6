@@ -83,25 +83,31 @@ async def _scan_folder() -> list[dict]:
         reverse=True,
     )
 
-    catalog = []
-    for f in entries:
-        try:
-            stat  = f.stat()
-            thumb, w, h = await loop.run_in_executor(None, _make_thumb, f)
-            if thumb is None:
-                continue
-            catalog.append({
-                "filename":   f.name,
-                "thumb_b64":  thumb,
-                "width":      w,
-                "height":     h,
-                "mtime":      int(stat.st_mtime * 1000),
-                "size_bytes": stat.st_size,
-            })
-        except Exception as e:
-            print(f"[images] skipping {f.name}: {e}", flush=True)
+    # Generate thumbnails concurrently (up to 8 at a time) instead of one-by-one
+    sem = asyncio.Semaphore(8)
 
-    return catalog
+    async def process(f: Path) -> "dict | None":
+        async with sem:
+            try:
+                stat        = f.stat()
+                thumb, w, h = await loop.run_in_executor(None, _make_thumb, f)
+                if thumb is None:
+                    return None
+                return {
+                    "filename":   f.name,
+                    "thumb_b64":  thumb,
+                    "width":      w,
+                    "height":     h,
+                    "mtime":      int(stat.st_mtime * 1000),
+                    "size_bytes": stat.st_size,
+                }
+            except Exception as e:
+                print(f"[images] skipping {f.name}: {e}", flush=True)
+                return None
+
+    results = await asyncio.gather(*(process(f) for f in entries))
+    # Filter None and preserve newest-first order
+    return [r for r in results if r is not None]
 
 
 def _folder_mtime() -> float:
@@ -196,7 +202,7 @@ async def run() -> None:
     try:
         async with websockets.serve(handle_client, "127.0.0.1", IMAGES_PORT):
             print(f"[images] ws://127.0.0.1:{IMAGES_PORT}", flush=True)
-            poll_task = asyncio.ensure_future(_poll())
+            poll_task = asyncio.create_task(_poll())
             await asyncio.Future()
     finally:
         if poll_task and not poll_task.done():

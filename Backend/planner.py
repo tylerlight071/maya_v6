@@ -58,6 +58,22 @@ def _save_events() -> None:
         print(f"[planner] events save error: {e}", flush=True)
 
 
+# ── Time normalisation ───────────────────────────────────────────────────────
+
+def _normalize_time(t: str) -> str:
+    """Ensure time strings are zero-padded HH:MM for correct lexicographic sorting."""
+    if not t:
+        return t
+    t = t.strip()
+    parts = t.split(":")
+    if len(parts) == 2:
+        try:
+            return f"{int(parts[0]):02d}:{parts[1]}"
+        except ValueError:
+            pass
+    return t
+
+
 # ── Natural language date parser ──────────────────────────────────────────────
 
 def parse_date(s: str) -> str:
@@ -65,9 +81,10 @@ def parse_date(s: str) -> str:
     if not s:
         return date.today().isoformat()
 
-    low = s.lower().strip()
+    low   = s.lower().strip()
     today = date.today()
 
+    # Natural language shortcuts
     if low in ("today", ""):
         return today.isoformat()
     if low == "tomorrow":
@@ -75,27 +92,31 @@ def parse_date(s: str) -> str:
     if low == "yesterday":
         return (today - timedelta(days=1)).isoformat()
 
+    # "next monday" / "monday" / "this friday" — always means the coming occurrence
     weekdays = ["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]
     for i, day in enumerate(weekdays):
-        if low.startswith(f"next {day}") or low == day:
+        if low.startswith(f"next {day}") or low.startswith(f"this {day}") or low == day:
             diff = i - today.weekday()
             if diff <= 0:
                 diff += 7
             return (today + timedelta(days=diff)).isoformat()
 
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d-%m-%Y"):
-        try:
-            return datetime.strptime(s, fmt).date().isoformat()
-        except ValueError:
-            pass
+    # "in N days" / "in N weeks"
+    import re as _re
+    m = _re.match(r"in\s+(\d+)\s+(day|days|week|weeks)", low)
+    if m:
+        n    = int(m.group(1))
+        unit = m.group(2)
+        delta = timedelta(weeks=n) if "week" in unit else timedelta(days=n)
+        return (today + delta).isoformat()
 
-    for fmt in ("%B %d %Y", "%b %d %Y", "%B %d", "%b %d"):
-        try:
-            dt = datetime.strptime(s, fmt)
-            yr = today.year if dt.year == 1900 else dt.year
-            return date(yr, dt.month, dt.day).isoformat()
-        except ValueError:
-            pass
+    # Everything else: let dateutil parse it (handles ISO, RFC, month names, etc.)
+    try:
+        from dateutil import parser as _duparser
+        dt = _duparser.parse(s, default=datetime(today.year, today.month, today.day))
+        return dt.date().isoformat()
+    except Exception:
+        pass
 
     return today.isoformat()
 
@@ -177,8 +198,8 @@ async def add_event(
         "id":          uuid.uuid4().hex[:8],
         "title":       title.strip(),
         "date":        parse_date(date_str),
-        "time":        time_str.strip() or None,
-        "end_time":    end_time.strip() or None,
+        "time":        _normalize_time(time_str.strip()) or None,
+        "end_time":    _normalize_time(end_time.strip()) or None,
         "description": description.strip(),
         "created":     datetime.now().isoformat(timespec="seconds"),
     }

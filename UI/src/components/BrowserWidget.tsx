@@ -67,6 +67,7 @@ export default function BrowserWidget({ visible, url, title, isAway = false, onC
     if (!wv) return
 
     const onStart  = () => setLoading(true)
+    const onStop   = () => setLoading(false)
     const onFinish = () => {
       setLoading(false)
       setCurrentUrl((wv as any).getURL?.() ?? url)
@@ -84,14 +85,14 @@ export default function BrowserWidget({ visible, url, title, isAway = false, onC
 
     wv.addEventListener('did-start-loading',   onStart)
     wv.addEventListener('did-finish-load',      onFinish)
-    wv.addEventListener('did-stop-loading',     () => setLoading(false))
+    wv.addEventListener('did-stop-loading',     onStop)
     wv.addEventListener('page-title-updated',   onTitle)
     wv.addEventListener('did-navigate',         onNav)
     wv.addEventListener('did-navigate-in-page', onNav)
     return () => {
       wv.removeEventListener('did-start-loading',   onStart)
       wv.removeEventListener('did-finish-load',      onFinish)
-      wv.removeEventListener('did-stop-loading',     () => setLoading(false))
+      wv.removeEventListener('did-stop-loading',     onStop)
       wv.removeEventListener('page-title-updated',   onTitle)
       wv.removeEventListener('did-navigate',         onNav)
       wv.removeEventListener('did-navigate-in-page', onNav)

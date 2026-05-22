@@ -56,10 +56,10 @@ export default function ImageGenWidget({ visible, isAway = false }: ImageGenWidg
           wsRef.current.send(JSON.stringify({ type: 'poll_status' }))
         }
       }, 5000)
-    } else {
+    }
+    return () => {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     }
-    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
   }, [status.status])
 
   const { dragging, panelStyle, onHeaderMouseDown, initTopLeft } = useDraggable(panelRef, 'maya-pos-imagegen')

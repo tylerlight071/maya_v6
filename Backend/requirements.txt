@@ -7,3 +7,5 @@ f5-tts>=1.0
 soundfile>=0.12
 insightface>=0.7
 opencv-python>=4.9
+keyring>=25
+python-dateutil>=2.9

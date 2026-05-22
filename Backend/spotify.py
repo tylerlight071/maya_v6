@@ -38,6 +38,7 @@ _access_token  = None
 _refresh_token = None
 _token_expiry  = 0.0
 _token_lock: "asyncio.Lock | None" = None   # initialised in run()
+_auth_header:  "dict | None" = None         # cached {"Authorization": "Bearer ..."}
 _current_track = None
 _clients: set  = set()
 _prev_track_id = None
@@ -54,27 +55,64 @@ def load_config() -> "dict | None":
         return None
 
 
-def load_tokens() -> bool:
-    global _access_token, _refresh_token, _token_expiry
-    if not TOKENS_FILE.exists():
-        return False
+_KEYRING_SERVICE = "maya-spotify"
+_KEYRING_USER    = "tokens"
+
+
+def _keyring_load() -> "dict | None":
+    """Try to load tokens from the OS credential manager."""
     try:
-        t = json.loads(TOKENS_FILE.read_text())
-        _access_token  = t.get("access_token")
-        _refresh_token = t.get("refresh_token")
-        _token_expiry  = t.get("expiry", 0)
-        return bool(_access_token and _refresh_token)
+        import keyring
+        raw = keyring.get_password(_KEYRING_SERVICE, _KEYRING_USER)
+        if raw:
+            return json.loads(raw)
+    except Exception:
+        pass
+    return None
+
+
+def _keyring_save(data: dict) -> bool:
+    """Try to save tokens to the OS credential manager. Returns True on success."""
+    try:
+        import keyring
+        keyring.set_password(_KEYRING_SERVICE, _KEYRING_USER, json.dumps(data))
+        return True
     except Exception:
         return False
 
 
+def load_tokens() -> bool:
+    global _access_token, _refresh_token, _token_expiry
+    # Prefer OS keyring; fall back to legacy JSON file
+    t = _keyring_load()
+    if t is None and TOKENS_FILE.exists():
+        try:
+            t = json.loads(TOKENS_FILE.read_text())
+            # Migrate to keyring on first successful load
+            if t.get("access_token") and t.get("refresh_token"):
+                if _keyring_save(t):
+                    TOKENS_FILE.unlink(missing_ok=True)
+                    print("[spotify] tokens migrated to OS keyring", flush=True)
+        except Exception:
+            pass
+    if not t:
+        return False
+    _access_token  = t.get("access_token")
+    _refresh_token = t.get("refresh_token")
+    _token_expiry  = t.get("expiry", 0)
+    return bool(_access_token and _refresh_token)
+
+
 def save_tokens() -> None:
-    TOKENS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    TOKENS_FILE.write_text(json.dumps({
+    data = {
         "access_token":  _access_token,
         "refresh_token": _refresh_token,
         "expiry":        _token_expiry,
-    }))
+    }
+    if not _keyring_save(data):
+        # Keyring unavailable — fall back to JSON file
+        TOKENS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        TOKENS_FILE.write_text(json.dumps(data))
 
 
 # ── OAuth ─────────────────────────────────────────────────────────────────────
@@ -124,8 +162,10 @@ async def _do_refresh(client_id: str, client_secret: str) -> None:
     if not d.get("access_token"):
         print(f"[spotify] token refresh failed: {d.get('error', d)}", flush=True)
         return
+    global _auth_header
     _access_token = d["access_token"]
     _token_expiry = time.time() + d.get("expires_in", 3600) - 60
+    _auth_header  = {"Authorization": f"Bearer {_access_token}"}
     save_tokens()
 
 
@@ -163,6 +203,8 @@ async def _oauth_cb(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) 
 
 async def _tok(client_id: str, client_secret: str) -> str:
     """Return a valid access token, refreshing under a lock to prevent races."""
+    if _token_lock is None:
+        raise RuntimeError("[spotify] _tok called before run() initialized the lock")
     async with _token_lock:
         if time.time() > _token_expiry:
             await _do_refresh(client_id, client_secret)
@@ -170,15 +212,21 @@ async def _tok(client_id: str, client_secret: str) -> str:
 
 
 def _h(token: str) -> dict:
+    # Return cached header if token matches, else build a new one
+    if _auth_header and _access_token == token:
+        return _auth_header
     return {"Authorization": f"Bearer {token}"}
 
 
 def _pick_art(images: list) -> "str | None":
-    """Return a medium-quality image URL (≈300 px), avoiding tiny thumbnails."""
+    """Return a medium-quality image URL (≈300 px) by finding the image closest to 300px wide."""
     if not images:
         return None
-    # Spotify returns images largest→smallest; index 1 is usually ~300px
-    return images[min(1, len(images) - 1)]["url"]
+    # Pick image closest in width to 300px; fall back to first if no width data
+    def _width(img: dict) -> int:
+        return img.get("width") or 9999
+    best = min(images, key=lambda img: abs(_width(img) - 300))
+    return best.get("url")
 
 
 def _parse_item(item: dict, d: dict) -> "dict | None":
@@ -452,7 +500,8 @@ async def _best_device_id(h: dict) -> "str | None":
     local = [d for d in devices if _is_local_device(d)]
     active_local  = next((d for d in local    if d.get("is_active")), None)
     active_any    = next((d for d in devices  if d.get("is_active")), None)
-    return (active_local or active_any or local[0] if local else devices[0])["id"]
+    best = active_local or active_any or (local[0] if local else devices[0])
+    return best["id"]
 
 
 async def play_uri(uri: str, cid: str, cs: str) -> bool:
@@ -656,13 +705,14 @@ async def run() -> None:
         print(f"[spotify] waiting for callback on port {CALLBACK_PORT}", flush=True)
         code = await _code_future
         srv.close()
+        await srv.wait_closed()
         await exchange_code(code, cid, cs)
 
     poll_task = None
     try:
         async with websockets.serve(handle_client, "127.0.0.1", SPOTIFY_PORT):
             print(f"[spotify] ws://127.0.0.1:{SPOTIFY_PORT}", flush=True)
-            poll_task = asyncio.ensure_future(_poll(cid, cs))
+            poll_task = asyncio.create_task(_poll(cid, cs))
             await asyncio.Future()
     finally:
         if poll_task and not poll_task.done():

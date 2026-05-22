@@ -52,11 +52,16 @@ export default function NewsWidget({ visible, isAway = false, onBrowse }: Props)
 
   useEffect(() => {
     let reconnect: ReturnType<typeof setTimeout>
+    let backoff = 1000
 
     function connect() {
       const ws = new WebSocket(WS_URL)
-      ws.onopen    = () => setConnected(true)
-      ws.onclose   = () => { setConnected(false); reconnect = setTimeout(connect, 3000) }
+      ws.onopen    = () => { setConnected(true); backoff = 1000 }
+      ws.onclose   = () => {
+        setConnected(false)
+        reconnect = setTimeout(connect, backoff)
+        backoff   = Math.min(backoff * 1.5, 30_000)
+      }
       ws.onerror   = () => ws.close()
       ws.onmessage = (e) => {
         try {

@@ -23,8 +23,18 @@ WIDGET_PORT    = 8770
 OLLAMA_URL     = "http://localhost:11434/api/chat"
 OLLAMA_MODEL   = "qwen2.5:14b"
 
-# Stability Matrix / ComfyUI paths
-COMFYUI_DIR    = Path(r"C:\Users\tyler\Downloads\Data\Packages\ComfyUI")
+# ComfyUI path — read from models/config.json, fallback to default
+def _comfyui_dir_from_config() -> Path:
+    config_path = Path(__file__).parent / "models/config.json"
+    try:
+        cfg = json.loads(config_path.read_text(encoding="utf-8"))
+        if cfg.get("comfyui_dir"):
+            return Path(cfg["comfyui_dir"])
+    except Exception:
+        pass
+    return Path(r"C:\Users\tyler\Downloads\Data\Packages\ComfyUI")
+
+COMFYUI_DIR    = _comfyui_dir_from_config()
 
 def _find_comfyui_python() -> Path:
     """Find the Python executable for ComfyUI, checking common Stability Matrix paths."""
@@ -70,124 +80,18 @@ def _load_workflow() -> "dict | None":
 _loaded_workflow: "dict | None" = _load_workflow()
 
 
-# ── Pose / action LoRA library ────────────────────────────────────────────────
+# ── Pose / action LoRA library — loaded from models/pose_loras.json ──────────
 
-POSE_LORAS: dict = {
-    "sidesex-10.safetensors": {
-        "triggers":    "1girl, 2boys, from side, spitroast, sex from behind, vaginal, deep penetration, standing sex, leg up",
-        "keywords":    ["side", "spitroast", "standing sex", "from behind", "oral", "deepthroat",
-                        "irrumatio", "mmf", "threesome", "standing", "leg up", "head grab", "spit roast"],
-        "strength":    0.85,
-        "composition": "full body, from side, wide shot",
-    },
-    "res_missionary-05.safetensors": {
-        "triggers":    "1girl, 2boys, restrained_missionary, sex, spread legs, vaginal, arms up, bound, armpits",
-        "keywords":    ["missionary", "restrained", "bound", "spread legs", "arms up", "on back",
-                        "lying", "from front", "held down", "wrist"],
-        "strength":    0.85,
-        "composition": "full body, front view, medium shot",
-    },
-    "cowgirl-paizuri.safetensors": {
-        "triggers":    "paizuri_cowgirl_3p, 1girl, 2boys, cowgirl position, paizuri, girl on top, straddling, breast grab",
-        "keywords":    ["cowgirl", "girl on top", "riding", "straddling", "paizuri", "titfuck",
-                        "tit fuck", "breast fuck", "on top", "titty fuck", "boobjob"],
-        "strength":    0.9,
-        "composition": "medium shot, upper body, front view",
-    },
-    "paizuri_missionary_3p.safetensors": {
-        "triggers":    "paizuri_missionary_3p, missionary, 1girl, threesome, paizuri, vaginal, 2boys, on back",
-        "keywords":    ["paizuri missionary", "lying missionary", "threesome paizuri", "on back paizuri",
-                        "missionary paizuri"],
-        "strength":    0.85,
-        "composition": "full body, medium shot, front view",
-    },
-    "multiple_male_masturbation.safetensors": {
-        "triggers":    "multiple_male_masturbation, 6+boys, 6+ penises, male masturbation, ejaculation, projectile cum",
-        "keywords":    ["multiple", "several men", "many cocks", "stroking", "jerking", "masturbat",
-                        "handjob", "projectile", "group of men", "multiple men", "circle jerk"],
-        "strength":    0.85,
-        "composition": "medium shot, group framing, chest up",
-    },
-    "res_facial.safetensors": {
-        "triggers":    "restrained_facial, 1girl, solo focus, face focus, facial, penis, cum, cum on hair, head grab from behind, hand on face",
-        "keywords":    ["restrained facial", "head grab", "held head", "grab from behind",
-                        "forced facial", "hand on face", "head held", "grabbed by hair",
-                        "held down", "restrained face"],
-        "strength":    0.8,
-        "composition": "bust shot, upper body, face and chest visible, from above",
-    },
-    "IL_allholes.safetensors": {
-        "triggers":    "4ll_h0les, gangbang, multiple boys, anal, vaginal, fellatio, double penetration, double anal, double vaginal, doggystyle",
-        "keywords":    ["gangbang", "all holes", "anal", "double penetration", "double anal",
-                        "double vaginal", "dp ", "triple", "4 guys", "5 guys", "multiple boys", "all three"],
-        "strength":    0.85,
-        "composition": "full body, wide shot, group",
-    },
-    "Bukkake Excessive Cum (Illustrious) v1.safetensors": {
-        "triggers":    "excessive cum, bukkake, cum on face, cum on body, cum in hair, cum on legs, cum on breasts",
-        "keywords":    ["facial", "cum on face", "cumshot", "face shot", "cum shot",
-                        "covered in cum", "dripping cum", "soaked", "cum all over", "bukakke",
-                        "excessive cum", "covered", "cum everywhere", "coated in", "drenched",
-                        "face covered", "painted in cum", "cum in hair"],
-        "strength":    0.85,
-        "composition": "bust shot, upper body, face and chest visible, from above",
-    },
-    "tentacle_hang.safetensors": {
-        "triggers":    "tentacle sex, tentacle_hang, tentacles, 1girl, arms up, legs up, suspension, bound, hanging breasts, restrained, bdsm, solo, spread legs, girl surrounded by many tentacles, multiple tentacles, vaginal, fellatio, multiple penetrations, anal sex",
-        "keywords":    ["tentacle", "tentacles", "suspension", "hanging", "tentacle sex",
-                        "tentacle fuck", "tentacle porn", "bound by tentacles", "restrained tentacle",
-                        "tentacle bondage", "wrapped in tentacles", "lifted", "suspended"],
-        "strength":    0.85,
-        "composition": "full body, wide shot, suspended, tentacles visible",
-    },
-    "bruise_ilxl_v1.safetensors": {
-        "triggers":    "bruise",
-        "keywords":    ["bruise", "bruised", "bruising", "marks", "rough marks", "body marks",
-                        "roughed up", "beaten", "used hard", "rough sex marks"],
-        "strength":    0.7,
-        "composition": "full body, medium shot",
-    },
-    "defeated_heroine_0.0.safetensors": {
-        "triggers":    "defeated_heroine, top-down bottom-up, (from behind:1.6)",
-        "keywords":    ["defeated", "defeated heroine", "used up", "broken", "exhausted after sex",
-                        "ahegao defeated", "limp", "used", "worn out", "collapsed", "ravaged",
-                        "mind broken", "passed out", "ruined"],
-        "strength":    0.85,
-        "composition": "full body, top-down, from behind, wide shot",
-    },
-    "Seductive_Boobjob.safetensors": {
-        "triggers":    "Seductive Boobjob, breasts, close-up, sensual expression, eye contact, cleavage, kneeling, teasing pose",
-        "keywords":    ["boobjob", "breast job", "seductive kneeling", "eye contact tease",
-                        "cleavage close", "sensual breasts", "teasing pose", "looking up seductive",
-                        "kneeling tease", "breast tease"],
-        "strength":    0.85,
-        "composition": "medium shot, upper body, face and chest, slight low angle",
-    },
-    "Paizuri.safetensors": {
-        "triggers":    "norzur1 topzur1 nipzur1 verzur1 sidezur1 penisin penisout cum uncensored penis",
-        "keywords":    ["paizuri", "titfuck", "tit fuck", "titjob", "tit job", "boobjob",
-                        "boob job", "breast fuck", "between breasts", "penis between breasts",
-                        "chest fuck"],
-        "strength":    0.9,
-        "composition": "medium shot, chest focus, upper body, slight low angle",
-    },
-    "deepthroat_v1.safetensors": {
-        "triggers":    "deepthroat, irrumatio, fellatio",
-        "keywords":    ["deepthroat", "deep throat", "throat fuck", "throat fucking", "irrumatio",
-                        "face fuck", "facefuck", "gagging", "choking on cock", "forced oral",
-                        "head push", "head grab blowjob", "blowjob deep"],
-        "strength":    0.85,
-        "composition": "bust shot, face and chest, slight low angle, close-up",
-    },
-    "TeasingCleavage_Illu_Dwnsty.safetensors": {
-        "triggers":    "pulling down own clothes, teasing, cleavage, clothes pull",
-        "keywords":    ["teasing cleavage", "clothes pull", "pulling top", "pulling shirt",
-                        "pulling down", "flashing", "revealing cleavage", "clothespull",
-                        "top pull", "showing cleavage", "teasing reveal", "shirt pull"],
-        "strength":    0.85,
-        "composition": "medium shot, upper body, cleavage focus",
-    },
-}
+def _load_pose_loras() -> dict:
+    p = Path(__file__).parent / "models/pose_loras.json"
+    if p.exists():
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"[comfyui] pose_loras.json load error: {e}", flush=True)
+    return {}
+
+POSE_LORAS: dict = _load_pose_loras()
 
 
 _POSE_SLOTS = ["18", "20", "21"]   # workflow nodes available for pose LoRAs
@@ -375,7 +279,7 @@ async def wait_for_completion(prompt_id: str, client_id: str, timeout: float = 1
                     seen_progress = True
                     step  = int(data.get("value", 0))
                     total = int(data.get("max", 1))
-                    asyncio.ensure_future(_broadcast({
+                    asyncio.create_task(_broadcast({
                         "status": "generating", "step": step, "total": total,
                         "filename": None, "error": None,
                     }))
@@ -442,7 +346,6 @@ async def copy_to_gallery(image_infos: list[dict]) -> list[str]:
     # Fallback: if history API returned nothing, grab the most recent PNG from output
     if not copied:
         print("[comfyui] history copy found nothing — scanning output folder for recent files", flush=True)
-        import time
         cutoff = time.time() - 120   # files modified in last 2 minutes
         try:
             recent = sorted(
@@ -512,15 +415,20 @@ async def _unload_llm_models() -> None:
     try:
         async with httpx.AsyncClient(timeout=5) as c:
             r = await c.get("http://localhost:11434/api/ps")
-            if r.is_success:
-                for m in r.json().get("models", []):
-                    name = m.get("name", "")
-                    if name:
-                        await c.post(OLLAMA_URL,
-                                     json={"model": name, "messages": [], "keep_alive": 0})
-                        print(f"[comfyui] unloaded {name} from VRAM", flush=True)
-    except Exception:
-        pass
+            if not r.is_success:
+                print(f"[comfyui] could not list Ollama models: {r.status_code}", flush=True)
+                return
+            for m in r.json().get("models", []):
+                name = m.get("name", "")
+                if not name:
+                    continue
+                ur = await c.post(OLLAMA_URL, json={"model": name, "messages": [], "keep_alive": 0})
+                if ur.is_success:
+                    print(f"[comfyui] unloaded {name} from VRAM", flush=True)
+                else:
+                    print(f"[comfyui] failed to unload {name}: {ur.status_code}", flush=True)
+    except Exception as e:
+        print(f"[comfyui] _unload_llm_models error: {e}", flush=True)
 
 
 async def generate(description: str, workflow_template: dict) -> "tuple[bool, str, list[str]]":
@@ -629,7 +537,7 @@ async def generate(description: str, workflow_template: dict) -> "tuple[bool, st
 
 # ── Widget WebSocket handler ──────────────────────────────────────────────────
 
-_generation_lock = asyncio.Lock()
+_generation_lock: asyncio.Lock | None = None
 
 
 async def handle_client(websocket) -> None:
@@ -678,13 +586,13 @@ async def handle_client(websocket) -> None:
                         "filename": None, "error": "No workflow loaded — check Backend/models/comfyui_workflow.json.",
                     }))
                     continue
-                if _generation_lock.locked():
+                if _generation_lock and _generation_lock.locked():
                     await websocket.send(json.dumps({
                         "status": "error", "step": 0, "total": 0,
                         "filename": None, "error": "Already generating — please wait.",
                     }))
                     continue
-                asyncio.ensure_future(_guarded_generate(prompt, workflow))
+                asyncio.create_task(_guarded_generate(prompt, workflow))
 
             elif msg.get("type") == "enhance_only":
                 prompt = msg.get("prompt", "").strip()
@@ -699,6 +607,9 @@ async def handle_client(websocket) -> None:
 
 
 async def _guarded_generate(prompt: str, workflow: dict) -> None:
+    global _generation_lock
+    if _generation_lock is None:
+        _generation_lock = asyncio.Lock()
     async with _generation_lock:
         await generate(prompt, workflow)
 
@@ -706,13 +617,11 @@ async def _guarded_generate(prompt: str, workflow: dict) -> None:
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 async def run() -> None:
-    poll_task = None
+    global _generation_lock
+    _generation_lock = asyncio.Lock()   # created here so it's always bound to running loop
     try:
         async with websockets.serve(handle_client, "127.0.0.1", WIDGET_PORT):
             print(f"[comfyui] widget ws://127.0.0.1:{WIDGET_PORT}", flush=True)
             await asyncio.Future()
     finally:
-        if poll_task and not poll_task.done():
-            poll_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await poll_task
+        pass   # no background poll_task to cancel

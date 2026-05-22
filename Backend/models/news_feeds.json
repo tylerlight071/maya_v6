@@ -1,0 +1,8 @@
+[
+  ["BBC News",     "http://feeds.bbci.co.uk/news/rss.xml",           "top"],
+  ["Sky News",     "https://feeds.skynews.com/feeds/rss/home.xml",   "top"],
+  ["The Guardian", "https://www.theguardian.com/world/rss",          "world"],
+  ["Reuters",      "https://feeds.reuters.com/reuters/topNews",      "top"],
+  ["TechCrunch",   "https://techcrunch.com/feed/",                   "tech"],
+  ["Ars Technica", "https://feeds.arstechnica.com/arstechnica/index","tech"]
+]

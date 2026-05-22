@@ -38,11 +38,16 @@ def _build_service_from_token(token_file: Path):
 
         creds = Credentials.from_authorized_user_file(str(token_file), SCOPES)
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-            token_file.write_text(creds.to_json(), encoding="utf-8")
+            try:
+                creds.refresh(Request())
+                token_file.write_text(creds.to_json(), encoding="utf-8")
+            except Exception as e:
+                print(f"[calendar] token refresh failed for {token_file.name}: {e}", flush=True)
+                return None
 
         if creds and creds.valid:
             return build("calendar", "v3", credentials=creds)
+        print(f"[calendar] credentials invalid for {token_file.name} — re-authenticate", flush=True)
     except Exception as e:
         print(f"[calendar] load {token_file.name} error: {e}", flush=True)
     return None
@@ -106,25 +111,21 @@ def _fmt(e: dict) -> dict:
     }
 
 
-def _query_all(time_min: str, time_max: str, max_per_cal: int = 50) -> list:
+def _query_all(time_min: str, time_max: str, max_per_cal: int = 250) -> list:
     """Fetch events from all authenticated accounts, merge and sort."""
     all_events: list = []
-    for svc in _services:
+    for i, svc in enumerate(_services, start=1):
         if not svc:
             continue
         try:
-            # Get all non-holiday calendars for this account
-            cal_list   = svc.calendarList().list().execute()
-            cal_ids    = [c["id"] for c in cal_list.get("items", [])
-                          if "holiday" not in c.get("id", "").lower()
-                          or not any("holiday" in x.get("id","").lower()
-                                     for x in cal_list.get("items",[])
-                                     if x["id"] != c["id"])]
-            seen_hol   = False
-            for cal_id in cal_ids:
+            # Get all calendars for this account; allow at most one holiday calendar
+            cal_list = svc.calendarList().list().execute()
+            seen_hol = False
+            for c in cal_list.get("items", []):
+                cal_id = c.get("id", "")
                 if "holiday" in cal_id.lower():
                     if seen_hol:
-                        continue
+                        continue   # skip extra holiday calendars
                     seen_hol = True
                 try:
                     result = svc.events().list(
@@ -132,10 +133,10 @@ def _query_all(time_min: str, time_max: str, max_per_cal: int = 50) -> list:
                         singleEvents=True, orderBy="startTime", maxResults=max_per_cal,
                     ).execute()
                     all_events.extend(_fmt(e) for e in result.get("items", []))
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[calendar] account {i} cal {cal_id[:30]} query error: {e}", flush=True)
         except Exception as e:
-            print(f"[calendar] query error: {e}", flush=True)
+            print(f"[calendar] account {i} list error: {e}", flush=True)
 
     # Sort merged results by start time, deduplicate by id
     seen: set = set()
@@ -189,7 +190,7 @@ def create_event(title: str, start: str, end: str, description: str = "") -> str
 def update_event(event_id: str, title: str = "", start: str = "",
                  end: str = "", description: str = "") -> str:
     # Try each account's service to find which one owns this event
-    for svc in _services:
+    for i, svc in enumerate(_services, start=1):
         if not svc:
             continue
         try:
@@ -201,20 +202,22 @@ def update_event(event_id: str, title: str = "", start: str = "",
             svc.events().update(calendarId="primary", eventId=event_id, body=event).execute()
             _refresh_cache()
             return "Updated."
-        except Exception:
+        except Exception as e:
+            print(f"[calendar] update_event account {i} error: {e}", flush=True)
             continue
     return "Event not found across any connected account."
 
 
 def delete_event(event_id: str) -> str:
-    for svc in _services:
+    for i, svc in enumerate(_services, start=1):
         if not svc:
             continue
         try:
             svc.events().delete(calendarId="primary", eventId=event_id).execute()
             _refresh_cache()
             return "Deleted."
-        except Exception:
+        except Exception as e:
+            print(f"[calendar] delete_event account {i} error: {e}", flush=True)
             continue
     return "Event not found across any connected account."
 
@@ -289,7 +292,7 @@ async def run() -> None:
                 _refresh_cache()
                 await _push_update()
 
-    asyncio.ensure_future(_poll())
+    asyncio.create_task(_poll())
     async with websockets.serve(handle_client, "127.0.0.1", CALENDAR_PORT):
         print(f"[calendar] ws://127.0.0.1:{CALENDAR_PORT}", flush=True)
         await asyncio.Future()

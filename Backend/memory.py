@@ -523,15 +523,18 @@ async def save_memory_fact(category: str, fact: str) -> str:
     new_vec = await _embed(fact)
 
     if new_vec:
-        for items in core.values():
-            if isinstance(items, list):
-                for existing in items:
-                    ex_text = _fact_text(existing)
-                    if not ex_text:
-                        continue
-                    ex_vec = await _embed(ex_text)
-                    if ex_vec and _cosine(new_vec, ex_vec) > 0.85:
-                        return f"Similar fact already exists: \"{ex_text}\""
+        # Build embedding cache for existing facts once (avoids N HTTP calls)
+        all_texts = [
+            _fact_text(item)
+            for items in core.values() if isinstance(items, list)
+            for item in items
+        ]
+        for ex_text in all_texts:
+            if not ex_text:
+                continue
+            ex_vec = await _embed(ex_text)
+            if ex_vec and _cosine(new_vec, ex_vec) > 0.85:
+                return f"Similar fact already exists: \"{ex_text}\""
 
     if category not in core:
         core[category] = []
@@ -914,6 +917,18 @@ async def _merge_new_facts(facts: list[dict], companion: bool) -> list[str]:
         return []
     core  = load_core()
     added: list[str] = []
+
+    # Build an embedding cache for ALL existing facts once — avoids N² HTTP calls
+    all_existing: list[str] = [
+        _fact_text(item)
+        for items in core.values() if isinstance(items, list)
+        for item in items
+    ]
+    embed_cache: dict[str, list | None] = {}
+    for ex_text in all_existing:
+        if ex_text and ex_text not in embed_cache:
+            embed_cache[ex_text] = await _embed(ex_text)
+
     for item in facts:
         cat       = item.get("category", "general")
         fact_text = item.get("fact", "").strip()
@@ -927,18 +942,22 @@ async def _merge_new_facts(facts: list[dict], companion: bool) -> list[str]:
         existing_texts = [_fact_text(f) for f in core[cat]]
         if fact_text in existing_texts:
             continue
-        # Semantic near-duplicate check
+        # Semantic near-duplicate check using pre-cached embeddings
         skip    = False
         new_vec = await _embed(fact_text)
         if new_vec:
             for ex_text in existing_texts:
-                ex_vec = await _embed(ex_text)
+                ex_vec = embed_cache.get(ex_text) or await _embed(ex_text)
                 if ex_vec and _cosine(new_vec, ex_vec) > 0.85:
                     skip = True
                     break
         if not skip:
             core[cat].append(_make_fact(fact_text, temporary=temporary))
             added.append(fact_text)
+            # Add to cache so subsequent new facts can check against this one too
+            if new_vec:
+                embed_cache[fact_text] = new_vec
+
     if added:
         save_core(core)
         print(f"[memory] +{len(added)} fact(s)", flush=True)
