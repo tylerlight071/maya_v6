@@ -3265,11 +3265,20 @@ async def main() -> None:
             log("[maya] say 'Hey Maya ...' to start a conversation")
             await asyncio.Future()
     finally:
-        # Clean shutdown — cancel all background tasks
+        # Cancel all background tasks
         for task in tasks:
             if not task.done():
                 task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        # Stop audio stream so the mic port is released
+        with contextlib.suppress(Exception):
+            if _audio_stream:
+                _audio_stream.stop()
+                _audio_stream.close()
+        # Stop ComfyUI process if we started it
+        with contextlib.suppress(Exception):
+            import comfyui as _comfyui_cleanup
+            _comfyui_cleanup.stop_comfyui()
         log("[maya] shutdown complete")
 
 
