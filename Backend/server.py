@@ -36,8 +36,8 @@ def log(msg: str) -> None:
 WS_PORT        = 8765
 STT_MODEL_SIZE = "base.en"   # single model for all transcription (wake + queries)
 OLLAMA_URL      = "http://localhost:11434/api/chat"
-OLLAMA_MODEL         = "mistral-small"
-OLLAMA_MODEL_NSFW    = "huihui_ai/mistral-small-abliterated"  # used in custom modes
+OLLAMA_MODEL         = "huihui_ai/mistral-small-abliterated"
+OLLAMA_MODEL_NSFW    = "huihui_ai/mistral-small-abliterated"
 VISION_MODEL         = "huihui_ai/gemma3-abliterated:12b"     # multimodal, abliterated
 SAMPLE_RATE     = 16_000
 MAX_HISTORY     = 40           # rolling conversation window for LLM context
