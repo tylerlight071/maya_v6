@@ -207,7 +207,7 @@ export default function App() {
       {weatherVisible  && <WeatherWidget  visible isAway={away} />}
       {imagesVisible   && <ImagesWidget   visible isAway={away} initialFilename={imageFilename} onInitialHandled={() => setImageFilename(null)} />}
       {imageGenVisible && <ImageGenWidget visible isAway={away} />}
-      {browserVisible  && <BrowserWidget  visible url={browserUrl} title={browserTitle} isAway={away} />}
+      {browserVisible  && <BrowserWidget  visible url={browserUrl} title={browserTitle} isAway={away} onClose={() => setBrowserVisible(false)} />}
       {videoVisible    && <VideoWidget    visible url={videoUrl} isAway={away} />}
       {monitorVisible  && <SystemMonitorWidget visible isAway={away} />}
       {timerVisible    && <TimerWidget    visible isAway={away} />}

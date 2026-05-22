@@ -177,6 +177,29 @@ async function importYoutubeCookies(videoSession) {
 }
 
 app.whenReady().then(() => {
+    // Configure browser session — Chrome UA + pre-accept common news site consent cookies
+    try {
+        const browserSession = session.fromPartition('persist:maya-browser');
+        const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+                          '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+        browserSession.setUserAgent(CHROME_UA);
+        // BBC News GDPR consent — prevents cookie banner blocking article content
+        const bbcConsent = [
+            { name: 'ckns_policy',   value: '111',  domain: '.bbc.co.uk' },
+            { name: 'ckns_explicit', value: '1',    domain: '.bbc.co.uk' },
+            { name: 'ckns_policy',   value: '111',  domain: '.bbc.com' },
+            { name: 'ckns_explicit', value: '1',    domain: '.bbc.com' },
+        ];
+        for (const c of bbcConsent) {
+            browserSession.cookies.set({
+                url: `https://www.bbc.co.uk`, ...c, path: '/', secure: true,
+            }).catch(() => {});
+        }
+        console.log('[main] browser session ready');
+    } catch (e) {
+        console.error('[main] browser session setup error:', e);
+    }
+
     // Configure video session — UA + pre-import YouTube cookies
     try {
         const videoSession = session.fromPartition('persist:maya-video');

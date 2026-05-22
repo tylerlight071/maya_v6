@@ -567,6 +567,140 @@ TOOLS = [
             },
         },
     },
+    # ── Memory tools ──────────────────────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "save_memory",
+            "description": (
+                "Save an important fact about Tyler to long-term memory right now, mid-conversation. "
+                "Use when Tyler explicitly says 'remember that', 'save that', or 'note that for next time', "
+                "or when he shares a lasting preference, constraint, or fact. "
+                "Do NOT use for temporary reminders — use add_note for those."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "enum": ["personal", "technical", "preferences", "project"],
+                        "description": "Which category this fact belongs to.",
+                    },
+                    "fact": {
+                        "type": "string",
+                        "description": "The fact to save as a single concise sentence.",
+                    },
+                },
+                "required": ["category", "fact"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forget_memory",
+            "description": (
+                "Remove a specific fact from Tyler's long-term memory. "
+                "Use when Tyler says 'forget that', 'that's changed', or 'remove that from memory'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fact": {
+                        "type": "string",
+                        "description": "The fact text to remove (approximate match is fine).",
+                    },
+                },
+                "required": ["fact"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_memory",
+            "description": (
+                "Search through past session logs to find conversations about a specific topic. "
+                "Use when Tyler asks 'what did we say about X', 'do you remember when we discussed Y', "
+                "or wants to recall something from a specific past session."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "What to search for in past sessions.",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_memory_status",
+            "description": (
+                "Return a summary of what you currently remember about Tyler — "
+                "fact counts, recent sessions, in-progress items, active projects, and file sizes. "
+                "Use when Tyler asks what you know or remember about him."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_project",
+            "description": (
+                "Create or update a named project in Tyler's project tracker. "
+                "Use proactively when work on a project is discussed, or when Tyler mentions progress. "
+                "Creates the project if it doesn't exist yet."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name":   {"type": "string", "description": "Project name."},
+                    "status": {"type": "string", "enum": ["active", "paused"], "description": "Optional status update."},
+                    "note":   {"type": "string", "description": "Optional note to add about current progress."},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "close_project",
+            "description": "Mark a project as done/complete.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Name of the project to close."},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_projects",
+            "description": "Show all tracked projects (active, paused, and done).",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "regenerate_profile",
+            "description": (
+                "Force a refresh of the narrative personality profile — the paragraph summary of who Tyler is. "
+                "Use when Tyler asks you to update or regenerate your understanding of him."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 TTS_REF_AUDIO = Path(__file__).parent.parent / "TTS/models/voice_ref.wav"
@@ -620,7 +754,7 @@ CURRENT DATETIME: {datetime}
 # kept for reference — ABOUT TYLER section is now embedded in the main prompt above
 
 
-def build_system_prompt() -> str:
+async def build_system_prompt(messages: list[dict] = None) -> str:
     import memory as _mem
     from datetime import datetime
 
@@ -747,8 +881,8 @@ def build_system_prompt() -> str:
         "and call show_widget to correct it.\n"
     )
 
-    ctx   = _mem.format_context(companion=bool(_active_mode_name))
-    block = f"WHAT YOU KNOW ABOUT TYLER:\n{ctx}\n" if ctx else ""
+    ctx   = await _mem.format_context(companion=bool(_active_mode_name), messages=messages)
+    block = ctx + "\n" if ctx else ""
 
     # Custom mode — if the prompt has {datetime} treat it as a full template
     if _active_mode_prompt:
@@ -1927,7 +2061,7 @@ async def _respond_vision(question: str, image_b64: str, send, loop: asyncio.Abs
         # In companion mode pass the system prompt so the abliterated model responds in character
         msgs = []
         if _active_mode_prompt:
-            msgs.append({"role": "system", "content": build_system_prompt()})
+            msgs.append({"role": "system", "content": await build_system_prompt()})
         msgs.append({"role": "user", "content": question or "Describe this image in detail.", "images": [image_b64]})
         async with httpx.AsyncClient(timeout=60) as client:
             async with client.stream("POST", OLLAMA_URL, json={
@@ -2334,11 +2468,43 @@ async def execute_tool(name: str, params: dict, websocket) -> str:
         log(f"[mode] {result}")
         return result
 
+    elif name == "save_memory":
+        import memory as _mem
+        return await _mem.save_memory_fact(params.get("category", "general"), params.get("fact", ""))
+
+    elif name == "forget_memory":
+        import memory as _mem
+        return _mem.forget_memory_fact(params.get("fact", ""))
+
+    elif name == "search_memory":
+        import memory as _mem
+        return await _mem.search_session_logs(params.get("query", ""))
+
+    elif name == "get_memory_status":
+        import memory as _mem
+        return _mem.get_memory_status()
+
+    elif name == "update_project":
+        import memory as _mem
+        return _mem.update_project(params.get("name", ""), params.get("status"), params.get("note"))
+
+    elif name == "close_project":
+        import memory as _mem
+        return _mem.close_project(params.get("name", ""))
+
+    elif name == "list_projects":
+        import memory as _mem
+        return _mem.list_projects()
+
+    elif name == "regenerate_profile":
+        import memory as _mem
+        return await _mem.regenerate_profile_tool()
+
     return f"Unknown tool: {name}"
 
 
 async def chat_with_tools(messages: list[dict], send, websocket) -> str:
-    system = build_system_prompt()
+    system = await build_system_prompt(messages=messages)
     msgs   = [{"role": "system", "content": system}] + messages
 
     try:
@@ -2446,7 +2612,7 @@ def _extract_image_triggers(text: str, websocket) -> "tuple[str, list[str]]":
 
 
 async def stream_ollama(messages: list[dict], send) -> str:
-    system = build_system_prompt()
+    system = await build_system_prompt(messages=messages)
     full   = ""
     msgs   = [{"role": "system", "content": system}] + messages
     async with httpx.AsyncClient(timeout=None) as client:
@@ -2740,6 +2906,12 @@ async def _respond(websocket, loop: asyncio.AbstractEventLoop) -> None:
 
         if full:
             history.append({"role": "assistant", "content": full})
+            # Mid-session incremental extraction every 10 messages
+            if len(history) % 10 == 0 and len(history) >= 10:
+                import memory as _mem
+                asyncio.ensure_future(
+                    _mem.extract_facts_incremental(history[-10:], companion=bool(_active_mode_name))
+                )
         await websocket.send(json.dumps({"type": "done"}))
         await websocket.send(json.dumps({"type": "speaking"}))
         await loop.run_in_executor(None, synthesise_and_play, full)
@@ -2786,7 +2958,7 @@ async def main() -> None:
                 r = await c.get("http://localhost:11434/api/tags")
                 if r.is_success:
                     names = [m.get("name", "") for m in r.json().get("models", [])]
-                    for model_name in (OLLAMA_MODEL_NSFW, VISION_MODEL):
+                    for model_name in (OLLAMA_MODEL_NSFW, VISION_MODEL, "nomic-embed-text"):
                         if any(model_name in n for n in names):
                             log(f"[maya] {model_name} already available")
                             continue

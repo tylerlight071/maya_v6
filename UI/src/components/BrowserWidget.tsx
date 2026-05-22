@@ -1,18 +1,14 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import { useDraggable } from '../hooks/useDraggable'
 import styles from './BrowserWidget.module.css'
 
-// Electron webview element — not in standard DOM types
 declare global {
   namespace JSX {
     interface IntrinsicElements {
       webview: React.DetailedHTMLProps<
         React.HTMLAttributes<HTMLElement> & {
-          src?: string
-          partition?: string
-          useragent?: string
-          allowpopups?: string
-          disablewebsecurity?: string
+          src?: string; partition?: string; useragent?: string
+          allowpopups?: string; disablewebsecurity?: string
         },
         HTMLElement
       >
@@ -20,52 +16,52 @@ declare global {
   }
 }
 
-// Realistic Chrome UA so sites don't block Electron
 const CHROME_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+
+const DEFAULT_W = 920
+const DEFAULT_H = 660
 
 interface BrowserWidgetProps {
   visible:  boolean
   url:      string
   title:    string
   isAway?:  boolean
+  onClose?: () => void
 }
 
 function extractDomain(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return url
-  }
+  try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
 }
 
 function getServiceIcon(url: string): string {
-  if (url.includes('google.com/maps'))   return '🗺'
-  if (url.includes('youtube.com'))       return '▶'
-  if (url.includes('wikipedia.org'))     return '◎'
-  if (url.includes('github.com'))        return '◈'
-  if (url.includes('localhost'))         return '⬡'
-  if (url.includes('imdb.com'))          return '★'
+  if (url.includes('google.com/maps')) return '🗺'
+  if (url.includes('youtube.com'))     return '▶'
+  if (url.includes('wikipedia.org'))   return '◎'
+  if (url.includes('github.com'))      return '◈'
+  if (url.includes('localhost'))       return '⬡'
+  if (url.includes('imdb.com'))        return '★'
   return '◻'
 }
 
-export default function BrowserWidget({ visible, url, title, isAway = false }: BrowserWidgetProps) {
+export default function BrowserWidget({ visible, url, title, isAway = false, onClose }: BrowserWidgetProps) {
   const panelRef   = useRef<HTMLDivElement>(null)
   const webviewRef = useRef<HTMLElement>(null)
+  const resizeRef  = useRef<{ startX: number; startY: number; startW: number; startH: number } | null>(null)
 
   const [loading,    setLoading]    = useState(false)
   const [pageTitle,  setPageTitle]  = useState('')
   const [currentUrl, setCurrentUrl] = useState('')
   const [canGoBack,  setCanGoBack]  = useState(false)
+  const [size,       setSize]       = useState({ w: DEFAULT_W, h: DEFAULT_H })
 
   const { dragging, panelStyle, onHeaderMouseDown, initTopLeft } = useDraggable(panelRef, 'maya-pos-browser')
 
   useEffect(() => {
-    if (visible) initTopLeft(Math.round(window.innerWidth / 2 - 460), 65)
+    if (visible) initTopLeft(Math.round(window.innerWidth / 2 - DEFAULT_W / 2), 65)
   }, [visible, initTopLeft])
 
-  // Wire up webview events once it's mounted
   useEffect(() => {
     const wv = webviewRef.current
     if (!wv) return
@@ -75,17 +71,23 @@ export default function BrowserWidget({ visible, url, title, isAway = false }: B
       setLoading(false)
       setCurrentUrl((wv as any).getURL?.() ?? url)
       setCanGoBack((wv as any).canGoBack?.() ?? false)
+      // Trigger resize + scroll so IntersectionObserver-based lazy loaders fire
+      setTimeout(() => {
+        ;(wv as any).executeJavaScript?.(
+          'window.dispatchEvent(new Event("resize"));' +
+          'window.scrollTo(0,1);window.scrollTo(0,0);'
+        ).catch(() => {})
+      }, 300)
     }
-    const onTitle  = (e: any) => setPageTitle(e.title ?? '')
-    const onNav    = (e: any) => setCurrentUrl(e.url ?? '')
+    const onTitle = (e: any) => setPageTitle(e.title ?? '')
+    const onNav   = (e: any) => setCurrentUrl(e.url ?? '')
 
-    wv.addEventListener('did-start-loading',    onStart)
-    wv.addEventListener('did-finish-load',       onFinish)
-    wv.addEventListener('did-stop-loading',      () => setLoading(false))
-    wv.addEventListener('page-title-updated',    onTitle)
-    wv.addEventListener('did-navigate',          onNav)
-    wv.addEventListener('did-navigate-in-page',  onNav)
-
+    wv.addEventListener('did-start-loading',   onStart)
+    wv.addEventListener('did-finish-load',      onFinish)
+    wv.addEventListener('did-stop-loading',     () => setLoading(false))
+    wv.addEventListener('page-title-updated',   onTitle)
+    wv.addEventListener('did-navigate',         onNav)
+    wv.addEventListener('did-navigate-in-page', onNav)
     return () => {
       wv.removeEventListener('did-start-loading',   onStart)
       wv.removeEventListener('did-finish-load',      onFinish)
@@ -96,13 +98,37 @@ export default function BrowserWidget({ visible, url, title, isAway = false }: B
     }
   }, [url])
 
-  // Navigate when url prop changes
   useEffect(() => {
     if (!url || !webviewRef.current) return
     setLoading(true)
     setPageTitle('')
     setCurrentUrl(url)
   }, [url])
+
+  const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    resizeRef.current = {
+      startX: e.clientX, startY: e.clientY,
+      startW: panelRef.current?.offsetWidth  ?? DEFAULT_W,
+      startH: panelRef.current?.offsetHeight ?? DEFAULT_H,
+    }
+    function onMove(ev: MouseEvent) {
+      if (!resizeRef.current) return
+      const { startX, startY, startW, startH } = resizeRef.current
+      setSize({
+        w: Math.max(480, startW + ev.clientX - startX),
+        h: Math.max(320, startH + ev.clientY - startY),
+      })
+    }
+    function onUp() {
+      resizeRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup',   onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup',   onUp)
+  }, [])
 
   const displayTitle  = title || pageTitle || extractDomain(url)
   const displayDomain = extractDomain(currentUrl || url)
@@ -114,6 +140,8 @@ export default function BrowserWidget({ visible, url, title, isAway = false }: B
       className={`${styles.widget} ${visible ? styles.visible : ''} ${dragging ? styles.dragging : ''}`}
       style={{
         ...panelStyle,
+        width: size.w,
+        height: size.h,
         ...(isAway ? { opacity: 0, filter: 'blur(3px)', pointerEvents: 'none', transition: 'opacity 0.8s ease, filter 0.8s ease' } : {}),
       }}
     >
@@ -135,6 +163,12 @@ export default function BrowserWidget({ visible, url, title, isAway = false }: B
             >←</button>
           )}
           <span className={styles.domain} title={currentUrl}>{displayDomain}</span>
+          <button
+            className={styles.closeBtn}
+            onMouseDown={e => e.stopPropagation()}
+            onClick={onClose}
+            title="Close"
+          >✕</button>
         </div>
       </div>
 
@@ -144,13 +178,15 @@ export default function BrowserWidget({ visible, url, title, isAway = false }: B
       {/* Webview */}
       <div className={styles.viewportWrap}>
         {url ? (
-          // @ts-ignore — Electron webview, valid in Electron renderer with webviewTag:true
+          // @ts-ignore
           <webview
             ref={webviewRef}
             src={url}
             useragent={CHROME_UA}
+            allowpopups="true"
             partition="persist:maya-browser"
             className={styles.webview}
+            style={{ width: '100%', height: '100%' }}
           />
         ) : (
           <div className={styles.idle}>
@@ -159,13 +195,14 @@ export default function BrowserWidget({ visible, url, title, isAway = false }: B
             <span className={styles.idleHint}>MAYA will navigate here when needed</span>
           </div>
         )}
-
-        {/* Corner brackets */}
         <div className={`${styles.corner} ${styles.cornerTL}`} />
         <div className={`${styles.corner} ${styles.cornerTR}`} />
         <div className={`${styles.corner} ${styles.cornerBL}`} />
         <div className={`${styles.corner} ${styles.cornerBR}`} />
       </div>
+
+      {/* Resize handle */}
+      <div className={styles.resizeHandle} onMouseDown={onResizeMouseDown} />
     </div>
   )
 }
