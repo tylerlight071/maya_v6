@@ -1,0 +1,182 @@
+{
+  "sidesex-10.safetensors": {
+    "triggers":    "1girl, 2boys, from side, spitroast, sex from behind, vaginal, deep penetration, standing sex, leg up",
+    "keywords":    ["side", "spitroast", "standing sex", "from behind", "oral", "deepthroat", "irrumatio", "mmf", "threesome", "standing", "leg up", "head grab", "spit roast"],
+    "strength":    0.85,
+    "composition": "full body, from side, wide shot"
+  },
+  "res_missionary-05.safetensors": {
+    "triggers":    "1girl, 2boys, restrained_missionary, sex, spread legs, vaginal, arms up, bound, armpits",
+    "keywords":    ["missionary", "restrained", "bound", "spread legs", "arms up", "on back", "lying", "from front", "held down", "wrist"],
+    "strength":    0.85,
+    "composition": "full body, front view, medium shot"
+  },
+  "cowgirl-paizuri.safetensors": {
+    "triggers":    "paizuri_cowgirl_3p, 1girl, 2boys, cowgirl position, paizuri, girl on top, straddling, breast grab",
+    "keywords":    ["cowgirl", "girl on top", "riding", "straddling", "paizuri", "titfuck", "tit fuck", "breast fuck", "on top", "titty fuck", "boobjob"],
+    "strength":    0.9,
+    "composition": "medium shot, upper body, front view"
+  },
+  "paizuri_missionary_3p.safetensors": {
+    "triggers":    "paizuri_missionary_3p, missionary, 1girl, threesome, paizuri, vaginal, 2boys, on back",
+    "keywords":    ["paizuri missionary", "lying missionary", "threesome paizuri", "on back paizuri", "missionary paizuri"],
+    "strength":    0.85,
+    "composition": "full body, medium shot, front view"
+  },
+  "multiple_male_masturbation.safetensors": {
+    "triggers":    "multiple_male_masturbation, 6+boys, 6+ penises, male masturbation, ejaculation, projectile cum",
+    "keywords":    ["multiple", "several men", "many cocks", "stroking", "jerking", "masturbat", "handjob", "projectile", "group of men", "multiple men", "circle jerk"],
+    "strength":    0.85,
+    "composition": "medium shot, group framing, chest up"
+  },
+  "res_facial.safetensors": {
+    "triggers":    "restrained_facial, 1girl, solo focus, face focus, facial, penis, cum, cum on hair, head grab from behind, hand on face",
+    "keywords":    ["restrained facial", "head grab", "held head", "grab from behind", "forced facial", "hand on face", "head held", "grabbed by hair", "held down", "restrained face"],
+    "strength":    0.8,
+    "composition": "bust shot, upper body, face and chest visible, from above"
+  },
+  "IL_allholes.safetensors": {
+    "triggers":    "4ll_h0les, gangbang, multiple boys, anal, vaginal, fellatio, double penetration, double anal, double vaginal, doggystyle",
+    "keywords":    ["gangbang", "all holes", "anal", "double penetration", "double anal", "double vaginal", "dp ", "triple", "4 guys", "5 guys", "multiple boys", "all three"],
+    "strength":    0.85,
+    "composition": "full body, wide shot, group"
+  },
+  "Bukkake Excessive Cum (Illustrious) v1.safetensors": {
+    "triggers":    "excessive cum, bukkake, cum on face, cum on body, cum in hair, cum on legs, cum on breasts",
+    "keywords":    ["facial", "cum on face", "cumshot", "face shot", "cum shot", "covered in cum", "dripping cum", "soaked", "cum all over", "bukakke", "excessive cum", "covered", "cum everywhere", "coated in", "drenched", "face covered", "painted in cum", "cum in hair"],
+    "strength":    0.85,
+    "composition": "bust shot, upper body, face and chest visible, from above"
+  },
+  "tentacle_hang.safetensors": {
+    "triggers":    "tentacle sex, tentacle_hang, tentacles, 1girl, arms up, legs up, suspension, bound, hanging breasts, restrained, bdsm, solo, spread legs, girl surrounded by many tentacles, multiple tentacles, vaginal, fellatio, multiple penetrations, anal sex",
+    "keywords":    ["tentacle", "tentacles", "suspension", "hanging", "tentacle sex", "tentacle fuck", "tentacle porn", "bound by tentacles", "restrained tentacle", "tentacle bondage", "wrapped in tentacles", "lifted", "suspended"],
+    "strength":    0.85,
+    "composition": "full body, wide shot, suspended, tentacles visible"
+  },
+  "bruise_ilxl_v1.safetensors": {
+    "triggers":    "bruise",
+    "keywords":    ["bruise", "bruised", "bruising", "marks", "rough marks", "body marks", "roughed up", "beaten", "used hard", "rough sex marks"],
+    "strength":    0.7,
+    "composition": "full body, medium shot"
+  },
+  "defeated_heroine_0.0.safetensors": {
+    "triggers":    "defeated_heroine, top-down bottom-up, (from behind:1.6)",
+    "keywords":    ["defeated", "defeated heroine", "used up", "broken", "exhausted after sex", "ahegao defeated", "limp", "used", "worn out", "collapsed", "ravaged", "mind broken", "passed out", "ruined"],
+    "strength":    0.85,
+    "composition": "full body, top-down, from behind, wide shot"
+  },
+  "Seductive_Boobjob.safetensors": {
+    "triggers":    "Seductive Boobjob, breasts, close-up, sensual expression, eye contact, cleavage, kneeling, teasing pose",
+    "keywords":    ["boobjob", "breast job", "seductive kneeling", "eye contact tease", "cleavage close", "sensual breasts", "teasing pose", "looking up seductive", "kneeling tease", "breast tease"],
+    "strength":    0.85,
+    "composition": "medium shot, upper body, face and chest, slight low angle"
+  },
+  "Paizuri.safetensors": {
+    "triggers":    "norzur1 topzur1 nipzur1 verzur1 sidezur1 penisin penisout cum uncensored penis",
+    "keywords":    ["paizuri", "titfuck", "tit fuck", "titjob", "tit job", "boobjob", "boob job", "breast fuck", "between breasts", "penis between breasts", "chest fuck"],
+    "strength":    0.9,
+    "composition": "medium shot, chest focus, upper body, slight low angle"
+  },
+  "deepthroat_v1.safetensors": {
+    "triggers":    "deepthroat, irrumatio, fellatio",
+    "keywords":    ["deepthroat", "deep throat", "throat fuck", "throat fucking", "irrumatio", "face fuck", "facefuck", "gagging", "choking on cock", "forced oral", "head push", "head grab blowjob", "blowjob deep"],
+    "strength":    0.85,
+    "composition": "bust shot, face and chest, slight low angle, close-up"
+  },
+  "TeasingCleavage_Illu_Dwnsty.safetensors": {
+    "triggers":    "pulling down own clothes, teasing, cleavage, clothes pull",
+    "keywords":    ["teasing cleavage", "clothes pull", "pulling top", "pulling shirt", "pulling down", "flashing", "revealing cleavage", "clothespull", "top pull", "showing cleavage", "teasing reveal", "shirt pull"],
+    "strength":    0.85,
+    "composition": "medium shot, upper body, cleavage focus"
+  },
+  "explodingclothes_il.safetensors": {
+    "triggers":    "exploding clothes, torn clothes, convenient censoring, surprised, blush, looking down, wide-eyed, constricted pupils, open mouth, emphasis lines, wind",
+    "keywords":    ["exploding clothes", "torn clothes", "clothes explosion", "clothes ripping", "shredded clothes", "clothes destruction", "ripped off", "convenient censoring", "tattered clothes"],
+    "strength":    0.85,
+    "composition": "full body, medium shot, dramatic"
+  },
+  "Shirt_lift-_Assisted_exposure_Illustrious.safetensors": {
+    "triggers":    "assisted exposure shirt lift",
+    "keywords":    ["shirt lift", "assisted exposure", "lifting shirt", "shirt up", "top lifted", "exposing breasts", "flashing", "clothes lift", "lifting top", "shirt lifted up"],
+    "strength":    0.85,
+    "composition": "medium shot, upper body, chest focus"
+  },
+  "Nipple_Play_Def_Illu_Dwnsty.safetensors": {
+    "triggers":    "nipples",
+    "keywords":    ["nipple play", "nipple licking", "nipple sucking", "nipple teasing", "nipple pinch", "playing with nipples", "nipple tweak", "nipple focus", "licking nipples", "sucking nipples", "nipple stimulation"],
+    "strength":    0.85,
+    "composition": "medium shot, upper body, chest close-up"
+  },
+  "BallsDeep-IL-V2.2-S.safetensors": {
+    "triggers":    "deep penetration",
+    "keywords":    ["balls deep", "deep penetration", "buried deep", "fully inserted", "hilt deep", "deep inside", "maximum depth", "complete insertion", "stuffed full", "all the way in", "base deep"],
+    "strength":    0.85,
+    "composition": "close-up, penetration focus, intimate shot"
+  },
+  "Pov_sex_looking_down_update-000006.safetensors": {
+    "triggers":    "MLD, 1girl, 1boy, pov, lying down on ground, on back, straddling, MPLD, 1girl, 1boy, pov, lying down on ground, on back, legs up, DSLD, 1girl, 1boy, pov, lying down on ground, from behind, butt, pinning, pov arms, looking at viewer, from above, dutch angle, reaching, reaching back, sex, sex from behind, imminent sex, (cum in pussy, overflow, cum bubbling:1.1), nipples, breasts apart, breasts together, breast grab, butt grab, leg grab",
+    "keywords":    ["pov looking down", "from above sex", "pov sex", "looking down at her", "missionary pov", "pov intercourse", "from above penetration", "pov from above", "dutch angle sex", "overhead sex", "top down sex", "pov domination"],
+    "strength":    0.9,
+    "composition": "from above, full body, pov"
+  },
+  "XXX_GangBang_IL_V1.safetensors": {
+    "triggers":    "1girl, solo focus, nude, 4+boys, Gangbang, Group Sex, Multiple Boys, Multiple Penises, blackskin boys, no face boys, blackskin male, hetero, sex, group sex, oral, fellatio, irrumatio, paizuri, spread legs, spitroast, sweat, gangbang, sex, rough sex, epic sex, head grab, cumming, speed lines",
+    "keywords":    ["evil angel", "xxx gangbang", "epic sex", "speed lines sex", "rough group sex", "multiple boys sex", "blackskin gangbang", "group sex generator", "rough gangbang", "hardcore group"],
+    "strength":    0.85,
+    "composition": "full body, wide shot, group"
+  },
+  "Tenatcle_breast_sucking-000010.safetensors": {
+    "triggers":    "tentacles, tentacle breast sucking",
+    "keywords":    ["tentacle breast sucking", "tentacle sucking breasts", "breast sucking tentacle", "tentacle nipple sucking", "tentacle latch breast", "tentacle latched", "tentacle on breasts", "tentacle milk"],
+    "strength":    0.85,
+    "composition": "medium shot, upper body, chest focus"
+  },
+  "ExtremeTentacleSex_Anime_IL_V1.safetensors": {
+    "triggers":    "extremetentaclesex, restrained by tentacles, suspended in air, tentacle pit, background fill tentacle, tentacle insertation, tentacles, dark skin tentacle, Huge tentacle, Huge testicles, veins tentacle, dark tentacle, disgusting breasts, grabbing breasts, squeezing breasts, bloated breasts, breasts dripping, nipplepen, nipple penetration, nipple insertion, extreme deep throat, :>=, Tears, runny nose, drool, 1girl, hetero, mouth bulge, throat bulge, esophagus bulge, bukkake, facial, excessive cum, cum in mouth, cum drip, cum over, cum in pussy, torn clothes, open brests, skindentation, taut clothes, revealing clothes, Torn clothes, 1boy, dark-skinned monster male, interracial, Ugly monster, fat monster male, height difference, size difference",
+    "keywords":    ["extreme tentacle sex", "tentacle pit", "nipple penetration", "nipple insertion", "mouth bulge", "throat bulge", "esophagus bulge", "dark tentacle", "huge tentacle", "extremetentaclesex", "bloated tentacle", "tentacle insertation", "extreme tentacle"],
+    "strength":    0.9,
+    "composition": "full body, wide shot, tentacle environment"
+  },
+  "IL20-NP43i.safetensors": {
+    "triggers":    "nipple_play, assertive female, femdom, handjob, from below, from side, lying, on side",
+    "keywords":    ["cuddling handjob", "nipple play handjob", "femdom handjob", "assertive female", "handjob from side", "lying handjob", "on side sex", "intimate handjob", "cuddling sex", "side lying sex", "lying side handjob"],
+    "strength":    0.85,
+    "composition": "medium shot, from side, upper body"
+  },
+  "monster_grab.safetensors": {
+    "triggers":    "monster_grab, 1girl, 1boy, monster, size difference, upside down, grab another's legs, standing, arms up, grab another's arm",
+    "keywords":    ["monster grab", "monster grabbing", "grabbed by monster", "monster lifting", "size difference monster", "upside down grabbed", "monster carry", "monster holding girl", "giant monster grab", "picked up by monster"],
+    "strength":    0.9,
+    "composition": "full body, wide shot, size difference visible"
+  },
+  "tentacle_monster_ilxl_v1.2.safetensors": {
+    "triggers":    "t_m, tentacle sex, monster, tentacle_pit, bite nipples, nipple tweak, restraint, mucus, eldritch abomination, monster with tentacles",
+    "keywords":    ["tentacle monster", "eldritch monster", "monster with tentacles", "tentacle pit monster", "biting nipples", "nipple bite", "restraint tentacle monster", "mucus monster", "eldritch abomination", "monster tentacle sex", "t_m"],
+    "strength":    0.9,
+    "composition": "full body, wide shot, monster environment"
+  },
+  "tentacle_tank_ill_v1.1-000005.safetensors": {
+    "triggers":    "tentacle tank, in container, cramped, tentacles",
+    "keywords":    ["tentacle tank", "in container", "glass container tentacles", "tank tentacles", "cramped tentacles", "contained by tentacles", "aquarium tentacles", "tentacle jar", "trapped in tank", "enclosed tentacles"],
+    "strength":    0.85,
+    "composition": "full body, contained, claustrophobic framing"
+  },
+  "sex_wall_1.safetensors": {
+    "triggers":    "sex_wall_1, 1girl, 1boy, sex, vaginal, press her to the wall, suspended congress, spread legs, sex from front, standing on one-leg, leg up, sex from front, legs grab, standing, sex from front",
+    "keywords":    ["sex against wall", "wall sex", "pressed to wall", "wall fuck", "suspended congress", "pinned to wall", "standing sex wall", "leg up wall sex", "wall penetration", "fucked against wall"],
+    "strength":    0.85,
+    "composition": "full body, from front, standing"
+  },
+  "povfacefcuk-000001.safetensors": {
+    "triggers":    "head out of frame, p0v_f0ck, (girl on back:1.3), pov, from above, head back, throat, fellatio, deepthroat",
+    "keywords":    ["pov face fuck", "reverse fellatio pov", "pov deepthroat", "from above deepthroat", "head back blowjob", "p0v f0ck", "pov oral from above", "head back fellatio", "throat pov", "upward deepthroat"],
+    "strength":    0.85,
+    "composition": "bust shot, from above, throat visible"
+  },
+  "OverTheEdgeBJILL.safetensors": {
+    "triggers":    "on back, oral, fellatio, penis, 1girl, 1boy, lying, on bed, upside-down",
+    "keywords":    ["over the edge blowjob", "upside down blowjob", "edge of bed blowjob", "hanging blowjob", "over edge oral", "upside down fellatio", "bed edge blowjob", "upside down oral", "over the edge oral", "hanging head blowjob"],
+    "strength":    0.85,
+    "composition": "upper body, bed edge, from above, upside down"
+  }
+}
