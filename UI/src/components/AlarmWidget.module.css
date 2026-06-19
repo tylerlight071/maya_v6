@@ -1,0 +1,148 @@
+.widget {
+  position: fixed;
+  background: rgba(7, 3, 18, 0.95);
+  border: 1px solid rgba(140, 80, 255, 0.25);
+  border-radius: 14px;
+  overflow: hidden;
+  z-index: 24;
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  box-shadow: 0 8px 52px rgba(90, 30, 200, 0.25), inset 0 1px 0 rgba(200, 160, 255, 0.07);
+  user-select: none;
+  width: 320px;
+  min-height: 120px;
+  transition: box-shadow 0.3s ease;
+}
+
+.widget::before {
+  content: '';
+  position: absolute; top: 0; left: 10%; right: 10%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(180, 120, 255, 0.65), transparent);
+  pointer-events: none; z-index: 1;
+}
+
+.flash {
+  box-shadow: 0 0 40px rgba(255, 180, 60, 0.7), 0 8px 52px rgba(90, 30, 200, 0.25);
+  border-color: rgba(255, 180, 60, 0.6);
+  animation: flashPulse 0.6s ease-in-out 3;
+}
+
+@keyframes flashPulse {
+  0%, 100% { box-shadow: 0 0 40px rgba(255, 180, 60, 0.7), 0 8px 52px rgba(90, 30, 200, 0.25); }
+  50%       { box-shadow: 0 0 80px rgba(255, 200, 60, 1.0), 0 8px 52px rgba(90, 30, 200, 0.25); }
+}
+
+.dragging { cursor: grabbing !important; }
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(16, 7, 36, 0.6);
+  border-bottom: 1px solid rgba(140, 80, 255, 0.1);
+  cursor: grab;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+}
+.header:active { cursor: grabbing; }
+
+.dragHint {
+  font-size: 11px;
+  color: rgba(140, 80, 255, 0.3);
+  letter-spacing: 2px;
+  flex-shrink: 0;
+}
+
+.title {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  color: rgba(185, 155, 255, 0.65);
+  letter-spacing: 3px;
+  flex: 1;
+}
+
+.dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dotOk  { background: rgba(100, 255, 120, 0.8); box-shadow: 0 0 4px rgba(100, 255, 120, 0.5); }
+.dotErr { background: rgba(255, 80, 80, 0.6); }
+
+/* ── Body ── */
+.body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+
+.empty {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: rgba(140, 80, 255, 0.3);
+  text-align: center;
+  margin: auto;
+  padding: 12px 0;
+}
+
+/* ── Alarm row ── */
+.alarmRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(140, 80, 255, 0.06);
+  border: 1px solid rgba(140, 80, 255, 0.12);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.alarmInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.alarmTime {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(210, 175, 255, 0.9);
+  letter-spacing: 1px;
+}
+
+.alarmLabel {
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  color: rgba(170, 140, 220, 0.6);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cancelBtn {
+  background: rgba(255, 60, 60, 0.06);
+  border: 1px solid rgba(255, 80, 80, 0.18);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 10px;
+  color: rgba(255, 130, 130, 0.65);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.cancelBtn:hover {
+  background: rgba(255, 60, 60, 0.18);
+  color: rgba(255, 160, 160, 0.9);
+}

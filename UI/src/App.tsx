@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import type { MayaState } from './types'
 import { TIMING } from './constants'
 import MAYACanvas from './components/MAYACanvas'
@@ -18,6 +18,8 @@ import TimerWidget from './components/TimerWidget'
 import StickyNotesWidget from './components/StickyNotesWidget'
 import CalendarWidget from './components/CalendarWidget'
 import NewsWidget from './components/NewsWidget'
+import ImageViewerWidget from './components/ImageViewerWidget'
+import AlarmWidget from './components/AlarmWidget'
 
 const VISIBILITY_KEY = 'maya-widget-visibility'
 
@@ -46,6 +48,12 @@ export default function App() {
   const [notesVisible,   setNotesVisible]   = useState(false)
   const [calendarVisible,setCalendarVisible]= useState(false)
   const [newsVisible,    setNewsVisible]    = useState(false)
+  const [alarmVisible,   setAlarmVisible]   = useState(false)
+  const [alarmFired,     setAlarmFired]     = useState<{ id: string; label: string } | null>(null)
+
+  // Generated image viewers — one floating widget per image, independently closeable
+  const [imageViewers, setImageViewers] = useState<Array<{ id: number; filename: string }>>([])
+  const nextViewerId = useRef(1)
 
   // Browser widget state
   const [browserVisible, setBrowserVisible] = useState(false)
@@ -68,7 +76,7 @@ export default function App() {
     const t = setTimeout(() => {
       const saved = loadSavedVisibility()
       setChatVisible(true)  // always start with chat open
-      setWebcamVisible(saved.webcam     ?? false)
+      setWebcamVisible(true)
       setSpotifyVisible(saved.spotify   ?? false)
       setWeatherVisible(saved.weather   ?? false)
       setImagesVisible(saved.images     ?? false)
@@ -143,6 +151,20 @@ export default function App() {
     if (action === 'map_clear')  { setMapCommand({ id: Date.now(), action: 'clear' }); return }
     if (action === 'map_reset')  { setMapCommand({ id: Date.now(), action: 'reset' }); setTimeout(() => setMapVisible(false), TIMING.MAP_RESET_HIDE_MS); return }
 
+    // ── Alarm fired ───────────────────────────────────────────────────────────
+    if (action === 'alarm_fired') {
+      setAlarmVisible(true)
+      setAlarmFired({ id: extra?.id as string ?? '', label: extra?.label as string ?? 'Alarm' })
+      setTimeout(() => setAlarmFired(null), 4000)
+      return
+    }
+
+    // ── Generated image viewer — one popup per image ─────────────────────────
+    if (action === 'show_image_viewer' && extra?.filename) {
+      setImageViewers(prev => [...prev, { id: nextViewerId.current++, filename: extra.filename as string }])
+      return
+    }
+
     // ── Panel show/hide ───────────────────────────────────────────────────────
     if (!widget) return
     const show = visible !== undefined ? visible : action === 'show_widget'
@@ -162,6 +184,7 @@ export default function App() {
     if (widget === 'sticky_notes')   setNotesVisible(show)
     if (widget === 'calendar')       setCalendarVisible(show)
     if (widget === 'news')           setNewsVisible(show)
+    if (widget === 'alarm')          setAlarmVisible(show)
     if (widget === 'images') {
       setImagesVisible(show)
       if (action === 'show_image' && extra?.filename) setImageFilename(extra.filename as string)
@@ -176,6 +199,8 @@ export default function App() {
     // Direct backend message: bypasses the LLM so _dev_log_mode is always reset
     wsSendRef.current?.(JSON.stringify({ type: 'dev_log_end' }))
   }
+
+  const handlePresenceChange = useCallback((present: boolean) => setPresence(present ? 'present' : 'away'), [])
 
   const away = presence === 'away'
 
@@ -205,7 +230,7 @@ export default function App() {
         wsSendRef={wsSendRef}
       />
       {/* All other widgets unmount when hidden — no ghost DOM, no dead zones, freed resources */}
-      {webcamVisible   && <WebcamWidget visible devLogMode={devLogMode} onPresenceChange={p => setPresence(p ? 'present' : 'away')} />}
+      {webcamVisible   && <WebcamWidget visible devLogMode={devLogMode} onPresenceChange={handlePresenceChange} />}
       {spotifyVisible  && <SpotifyWidget  visible isAway={away} />}
       {weatherVisible  && <WeatherWidget  visible isAway={away} />}
       {imagesVisible   && <ImagesWidget   visible isAway={away} initialFilename={imageFilename} onInitialHandled={() => setImageFilename(null)} />}
@@ -217,6 +242,16 @@ export default function App() {
       {notesVisible    && <StickyNotesWidget visible isAway={away} />}
       {calendarVisible && <CalendarWidget visible isAway={away} />}
       {newsVisible     && <NewsWidget visible isAway={away} onBrowse={(url, title) => handleAction('browse', undefined, undefined, { url, title })} />}
+      {alarmVisible    && <AlarmWidget visible isAway={away} fired={alarmFired} />}
+      {imageViewers.map((v, idx) => (
+        <ImageViewerWidget
+          key={v.id}
+          filename={v.filename}
+          viewerIndex={idx}
+          onClose={() => setImageViewers(prev => prev.filter(x => x.id !== v.id))}
+          isAway={away}
+        />
+      ))}
     </>
   )
 }

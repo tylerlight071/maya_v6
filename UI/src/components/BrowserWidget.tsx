@@ -55,6 +55,7 @@ export default function BrowserWidget({ visible, url, title, isAway = false, onC
   const [currentUrl, setCurrentUrl] = useState('')
   const [canGoBack,  setCanGoBack]  = useState(false)
   const [size,       setSize]       = useState({ w: DEFAULT_W, h: DEFAULT_H })
+  const [inputUrl,   setInputUrl]   = useState(url)
 
   const { dragging, panelStyle, onHeaderMouseDown, initTopLeft } = useDraggable(panelRef, 'maya-pos-browser')
 
@@ -70,7 +71,9 @@ export default function BrowserWidget({ visible, url, title, isAway = false, onC
     const onStop   = () => setLoading(false)
     const onFinish = () => {
       setLoading(false)
-      setCurrentUrl((wv as any).getURL?.() ?? url)
+      const newUrl = (wv as any).getURL?.() ?? url
+      setCurrentUrl(newUrl)
+      setInputUrl(newUrl)
       setCanGoBack((wv as any).canGoBack?.() ?? false)
       // Trigger resize + scroll so IntersectionObserver-based lazy loaders fire
       setTimeout(() => {
@@ -104,7 +107,21 @@ export default function BrowserWidget({ visible, url, title, isAway = false, onC
     setLoading(true)
     setPageTitle('')
     setCurrentUrl(url)
+    setInputUrl(url)
   }, [url])
+
+  function navigate(raw: string) {
+    let target = raw.trim()
+    if (!target) return
+    if (!target.includes(' ') && (target.includes('.') || target.startsWith('localhost'))) {
+      if (!/^https?:\/\//i.test(target)) target = 'https://' + target
+    } else {
+      target = 'https://duckduckgo.com/?q=' + encodeURIComponent(target)
+    }
+    ;(webviewRef.current as any)?.loadURL?.(target)
+    setCurrentUrl(target)
+    setInputUrl(target)
+  }
 
   const onResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
@@ -171,6 +188,35 @@ export default function BrowserWidget({ visible, url, title, isAway = false, onC
             title="Close"
           >✕</button>
         </div>
+      </div>
+
+      {/* URL bar */}
+      <div className={styles.urlBar} onMouseDown={e => e.stopPropagation()}>
+        <button
+          className={styles.urlNavBtn}
+          onClick={() => (webviewRef.current as any)?.goBack?.()}
+          disabled={!canGoBack}
+          title="Back"
+        >←</button>
+        <button
+          className={styles.urlNavBtn}
+          onClick={() => (webviewRef.current as any)?.reload?.()}
+          title="Reload"
+        >↺</button>
+        <input
+          className={styles.urlInput}
+          value={inputUrl}
+          onChange={e => setInputUrl(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') navigate(inputUrl) }}
+          onFocus={e => e.target.select()}
+          placeholder="Search or enter URL…"
+          spellCheck={false}
+        />
+        <button
+          className={styles.urlGoBtn}
+          onClick={() => navigate(inputUrl)}
+          title="Go"
+        >→</button>
       </div>
 
       {/* Loading bar */}

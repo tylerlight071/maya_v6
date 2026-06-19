@@ -33,6 +33,7 @@ export const SYSTEM_MONITOR_WS = 'ws://127.0.0.1:8771'
 export const TIMER_WS          = 'ws://127.0.0.1:8772'
 export const STICKY_NOTES_WS   = 'ws://127.0.0.1:8773'
 export const CALENDAR_WS       = 'ws://127.0.0.1:8774'
+export const ALARM_WS          = 'ws://127.0.0.1:8776'
 
 export const PANEL = {
   MAX_WIDTH: 580,

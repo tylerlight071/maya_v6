@@ -1,0 +1,29 @@
+{
+  "personal": [
+    "Name: Tyler Lightwood. Address as Sir in focused or professional contexts, Tyler when casual.",
+    "Works late evenings and sometimes late nights — session patterns confirm this.",
+    "Prefers to be addressed as 'Sir' even in casual contexts if interaction is focused on MAYA project updates.",
+    "Prefers to be addressed as 'Sir' even in casual contexts if the interaction involves explicit content or fantasies."
+  ],
+  "technical": [
+    "Hardware: RTX 5070 Ti (Blackwell / GB205, 16GB VRAM), Ryzen 7 9800X3D, 64GB DDR5, Windows 11 Home.",
+    "Python 3.11 in .venv for all ML work. Python 3.14 installed globally but incompatible with PyTorch/F5-TTS.",
+    "Running Ollama locally with mistral-small for LLM inference.",
+    "Building MAYA: Electron shell, Vite/React/TypeScript frontend, Python backend (faster-whisper CUDA for STT, F5-TTS CUDA for voice, InsightFace for presence detection, Spotify Web API)."
+  ],
+  "preferences": [
+    "Concise. Dislikes over-explanation and waffle.",
+    "Direct communication — doesn't need things spelled out or hedged.",
+    "Prefers to be called Sir in professional/focused contexts.",
+    "Gave full creative control on UI and architecture decisions — trusts judgment.",
+    {
+      "fact": "Avoid tight latex outfits when generating images",
+      "learned": "2026-05-23"
+    }
+  ],
+  "project": [
+    "MAYA is Tyler's personal AI assistant: voice-first, fully local, privacy-focused (no cloud, no Google).",
+    "Face recognition uses InsightFace ArcFace — auto-captures reference images during high-confidence recognition.",
+    "Away/return animations: orb plays intro in reverse when Tyler leaves desk, replays on return."
+  ]
+}

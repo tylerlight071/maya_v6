@@ -127,8 +127,8 @@ function createWindow() {
         cwd: backendDir,
         stdio: 'pipe',
     });
-    backend.stdout.on('data', d => console.log('[maya]', d.toString().trim()));
-    backend.stderr.on('data', d => console.error('[maya]', d.toString().trim()));
+    backend.stdout.on('data', d => process.stdout.write(d));
+    backend.stderr.on('data', d => process.stderr.write(d));
     backend.on('exit', code => {
         console.log(`[maya] backend exited (${code})`);
         if (code === 0 || code === null) {
@@ -179,12 +179,10 @@ ipcMain.handle('video-auth-popup', (_event, url) => {
     });
 });
 
-// ── YouTube cookie import ──────────────────────────────────────────────────────
-// Parses a Netscape-format cookies.txt and imports into the video session so
-// YouTube recognises the account without any sign-in flow.
-async function importYoutubeCookies(videoSession) {
-    const cookieFile = path.join(__dirname, '../Backend/models/youtube_cookies.txt');
-    if (!fs.existsSync(cookieFile)) return;
+// ── Cookie import helper ───────────────────────────────────────────────────────
+// Parses a Netscape-format cookies.txt and imports into the given session.
+async function importCookiesFromFile(cookieFile, targetSession, defaultUrl) {
+    if (!fs.existsSync(cookieFile)) return 0;
     const lines = fs.readFileSync(cookieFile, 'utf-8').split('\n');
     let imported = 0;
     for (const line of lines) {
@@ -195,9 +193,11 @@ async function importYoutubeCookies(videoSession) {
         const value  = valueParts.join('\t').trim();
         const secure = secureStr.trim() === 'TRUE';
         const expiry = parseInt(expiryStr.trim(), 10);
+        const cleanDomain = domain.trim().replace(/^\./, '');
+        const cookieUrl   = defaultUrl || `https://${cleanDomain}`;
         try {
-            await videoSession.cookies.set({
-                url:            `https://www.youtube.com`,
+            await targetSession.cookies.set({
+                url:            cookieUrl,
                 domain:         domain.trim(),
                 name:           name.trim(),
                 value,
@@ -209,7 +209,13 @@ async function importYoutubeCookies(videoSession) {
             imported++;
         } catch (_) { /* skip cookies that fail */ }
     }
-    console.log(`[main] imported ${imported} YouTube cookies into video session`);
+    return imported;
+}
+
+async function importYoutubeCookies(videoSession) {
+    const cookieFile = path.join(__dirname, '../Backend/models/youtube_cookies.txt');
+    const n = await importCookiesFromFile(cookieFile, videoSession, 'https://www.youtube.com');
+    console.log(`[main] imported ${n} YouTube cookies into video session`);
 }
 
 app.whenReady().then(() => {
@@ -234,6 +240,17 @@ app.whenReady().then(() => {
             }).catch(() => {});
         }
         console.log('[main] browser session ready');
+
+        // Import any site-specific cookie files found in Backend/models/
+        const cookieSites = [
+            { file: 'pornhub_cookies.txt', url: 'https://www.pornhub.com', label: 'Pornhub' },
+        ];
+        for (const site of cookieSites) {
+            const cookieFile = path.join(__dirname, '../Backend/models/', site.file);
+            importCookiesFromFile(cookieFile, browserSession, site.url)
+                .then(n => { if (n > 0) console.log(`[main] imported ${n} ${site.label} cookies into browser session`); })
+                .catch(() => {});
+        }
     } catch (e) {
         console.error('[main] browser session setup error:', e);
     }

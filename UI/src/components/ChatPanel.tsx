@@ -22,6 +22,7 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
   const wsRef        = useRef<WebSocket | null>(null)
   const nextIdRef    = useRef(1)
   const streamingRef = useRef('')
+  const rafRef       = useRef<number | null>(null)
 
   const { dragging, panelStyle, onHeaderMouseDown, initTopLeft } = useDraggable(panelRef, 'maya-pos-chat')
 
@@ -89,9 +90,15 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
               break
             case 'token':
               streamingRef.current += msg.text as string
-              setStreamingText(streamingRef.current)
+              if (!rafRef.current) {
+                rafRef.current = requestAnimationFrame(() => {
+                  setStreamingText(streamingRef.current)
+                  rafRef.current = null
+                })
+              }
               break
             case 'done': {
+              if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
               const final = streamingRef.current
               if (final) {
                 setMessages(prev => [...prev, { id: nextIdRef.current++, role: 'j', text: final }])

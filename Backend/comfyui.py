@@ -21,7 +21,7 @@ COMFYUI_URL    = "http://127.0.0.1:8188"
 COMFYUI_WS     = "ws://127.0.0.1:8188"
 WIDGET_PORT    = 8770
 OLLAMA_URL     = "http://localhost:11434/api/chat"
-OLLAMA_MODEL   = "qwen2.5:14b"
+OLLAMA_MODEL   = "huihui_ai/dolphin3-abliterated:8b-llama3.1-q4_K_M"  # keep in sync with server.py
 
 # ComfyUI path — read from models/config.json, fallback to default
 def _comfyui_dir_from_config() -> Path:
@@ -98,17 +98,37 @@ _POSE_SLOTS = ["18", "20", "21"]   # workflow nodes available for pose LoRAs
 
 
 def select_pose_loras(description: str) -> "tuple[list[dict], str]":
-    """Score all LoRAs against description. Returns (list of selected lora dicts, composition).
-    Up to 3 LoRAs can be mixed; any with score > 0 are included, sorted by score desc."""
+    """
+    Score LoRAs against description, then pick at most one per category to avoid
+    conflicts. Within each category, winning LoRA is chosen randomly weighted by score.
+    Up to 3 LoRAs total (one per workflow slot).
+    """
     dl = description.lower()
-    scored = []
+
+    # Score every LoRA; group matches by category
+    by_category: dict[str, list] = {}
     for filename, data in POSE_LORAS.items():
         score = sum(1 for kw in data["keywords"] if kw in dl)
-        if score > 0:
-            scored.append((score, filename, data))
+        if score == 0:
+            continue
+        cat = data.get("category", "misc")
+        by_category.setdefault(cat, []).append((score, filename, data))
 
-    scored.sort(key=lambda x: x[0], reverse=True)
-    selected = scored[:len(_POSE_SLOTS)]   # at most as many as we have slots
+    # From each category pick ONE winner — weighted-random among candidates with score > 0
+    winners: list[tuple[int, str, dict]] = []
+    for cat, candidates in by_category.items():
+        total = sum(s for s, _, _ in candidates)
+        r = random.uniform(0, total)
+        cumulative = 0.0
+        for score, filename, data in sorted(candidates, key=lambda x: x[0], reverse=True):
+            cumulative += score
+            if r <= cumulative:
+                winners.append((score, filename, data))
+                break
+
+    # Sort winners by score descending; take up to 3
+    winners.sort(key=lambda x: x[0], reverse=True)
+    selected = winners[:len(_POSE_SLOTS)]
 
     if not selected:
         return [], "full body, medium shot, wide angle"
@@ -116,7 +136,6 @@ def select_pose_loras(description: str) -> "tuple[list[dict], str]":
     for score, filename, _ in selected:
         print(f"[comfyui] pose LoRA: {filename} (score {score})", flush=True)
 
-    # Composition comes from the highest-scoring LoRA
     composition = selected[0][2]["composition"]
     result = [{"filename": fn, "strength": data["strength"], "triggers": data["triggers"]}
               for _, fn, data in selected]
@@ -128,48 +147,58 @@ def select_pose_loras(description: str) -> "tuple[list[dict], str]":
 _ENHANCE_SYSTEM = """\
 You are an expert Stable Diffusion prompt engineer specialising in explicit anime/illustration.
 
-Convert the user's natural language scene description into optimised, comma-separated SD prompt tags.
-Focus on: scene, setting, environment, mood, lighting, actions, poses, clothing, expressions, body language.
-Do NOT add character appearance tags — those are handled by LoRA embeddings already in the base prompt.
-Do NOT repeat quality tags (best quality, masterpiece, absurdres) — they are already present.
-Do NOT include flowers, floral elements, flower decorations, or botanical imagery in any prompt.
+Convert the user's scene description into rich, comma-separated SD prompt tags. Be generous — expand every detail the scene implies. A good output has 20-35 tags covering: action/pose, setting/environment, lighting, mood, clothing/state, body language, and expression.
+
+Do NOT add character appearance tags (hair, eye colour, body type) — LoRA handles those.
+Do NOT repeat quality tags (best quality, masterpiece, absurdres) — already present.
+Do NOT include flowers, floral, botanical imagery.
 Output ONLY the comma-separated tags. No explanation, no preamble, no quotes.
 
-COMPOSITION RULES — always include a shot type appropriate to the scene:
-- Full-body sex scenes, positions, poses → full body, wide shot, full body view
-- Facial / cumshot on face → bust shot, upper body, face and chest in frame, from above
+SETTING — always expand the environment with 3-5 tags:
+- Dark forest / outdoors → moonlit clearing, ancient stone altar, gnarled trees, mist, ethereal glow, dramatic shadows
+- Dungeon / underground → stone dungeon, iron chains, torchlight, damp walls, dramatic shadows
+- Penthouse / indoor luxury → luxury penthouse, city skyline view, soft ambient lighting, silk sheets
+- Throne room / fantasy → demonic throne room, dramatic lighting, ornate pillars, hellfire background
+- Always include at least: a location tag, a lighting tag, an atmosphere tag
+
+LIGHTING — always be specific:
+- Night/outdoor → moonlight, silvery light, rim lighting
+- Indoor fantasy → torchlight, candlelight, dramatic shadows
+- Cinematic → cinematic lighting, dramatic chiaroscuro
+- Glowing/magical → ethereal glow, magic particle effects, bioluminescent
+
+COMPOSITION RULES — always include a shot type:
+- Full-body sex scenes → full body, wide shot
+- Facial / cumshot → bust shot, upper body, face and chest in frame, from above
 - Titjob / paizuri → upper body, chest focus, medium shot
-- Gangbang / group → wide shot, group, full body
-- Default for anything unclear → full body, medium shot
+- Gangbang / group → wide shot, group framing, full body
+- Default → full body, medium shot
 Never default to close-up face unless the scene is specifically about the face.
 
-EXPRESSION RULES — always include at least one expression tag that fits the scene intensity:
-- Rough sex, pounding, hard fucking → open mouth, moaning, flushed, heavy breathing
-- Orgasm / cumming / creampie → ahegao, eyes rolled back, tongue out, drooling, blissful
-- Gangbang / used by many → ahegao, mind broken, dazed, eyes glazed, drooling
-- Deepthroat / face fuck / irrumatio → gagging, tears streaming, eyes watering, drool
-- Tentacle / monster / extreme → wide eyes, tears, crying, open mouth, terrified, shocked
-- Restrained / BDSM → gritting teeth, desperate, struggling, biting lip, fearful
-- Seductive / teasing / solo → bedroom eyes, half-lidded, smirk, seductive smile, biting lip
-- Defeated / broken / mind-break → ahegao, vacant eyes, tongue out, drooling, dazed
-- Exploding clothes / surprise → wide-eyed, shocked, open mouth, embarrassed, blushing
-- Creampie / cum play → satisfied, blissful, flushed, open mouth, panting
-- Gentle / romantic → soft smile, happy, blissful, loving gaze
-Never use "looking at viewer" or "light blush" as the only expression — they are neutral defaults.
-Always match intensity: extreme scenes need extreme expressions.
+EXPRESSION RULES — always include 2-3 expression tags matching the intensity:
+- Rough sex / hard fucking → open mouth moaning, flushed, sweat, heavy breathing, desperate
+- Orgasm / creampie → ahegao, eyes rolled back, tongue out, drooling, blissful, trembling
+- Gangbang / many men → ahegao, mind broken, dazed, eyes glazed, drooling, overwhelmed
+- Deepthroat / face fuck → gagging, tears streaming, eyes watering, drool, mascara running
+- Tentacle / monster / extreme → wide eyes, tears, crying, open mouth, terrified, shocked, struggling
+- Restrained / BDSM → gritting teeth, desperate, biting lip, fearful, straining against bonds
+- Seductive / teasing → bedroom eyes, half-lidded, smirk, seductive smile, biting lip, flushed
+- Defeated / mind-break → ahegao, vacant eyes, tongue out, drooling, limp, used
+- Creampie aftermath → satisfied, blissful, flushed, panting, cum dripping
+- Gentle / romantic → soft smile, happy, blissful, loving gaze, tender
 
 Examples:
-Input:  "on her knees, face covered in cum, eyes rolled back"
-Output: on knees, face focus, close-up, ahegao, eyes rolled back, tongue out, drooling, flushed cheeks, messy, blissful
+Input:  "succubus, dark altar, bound and helpless, sex from behind"
+Output: full body, wide shot, demonic altar, hellfire background, chains, iron shackles, stone floor, torchlight, dramatic shadows, smoke, sex from behind, legs spread, arms restrained above head, ahegao, eyes rolled back, tongue out, drooling, flushed, tears, overwhelmed, sweat glistening
 
-Input:  "getting railed from behind standing up"
-Output: full body, from behind, standing, sex from behind, wide shot, bent over slightly, open mouth moaning, flushed, heavy breathing
+Input:  "getting railed from behind standing up, forest clearing at night"
+Output: full body, from behind, standing, sex from behind, wide shot, moonlit forest clearing, ancient trees, mist, silver moonlight, rim lighting, fog, bent over slightly, open mouth moaning, flushed, heavy breathing, desperate, sweat, hair dishevelled
 
 Input:  "tentacle pit, restrained, multiple tentacles"
-Output: full body, wide shot, tentacle environment, wide eyes, tears, crying, open mouth, terrified, arms restrained
+Output: full body, wide shot, tentacle environment, underground cavern, bioluminescent glow, damp stone, tentacles everywhere, suspended mid-air, arms and legs wrapped, multiple penetration, wide eyes, tears streaming, crying, open mouth, terrified, shocked, struggling, drool
 
-Input:  "seductive pose, lingerie, teasing"
-Output: upper body, bedroom eyes, half-lidded, seductive smile, biting lip, soft lighting, inviting
+Input:  "seductive lingerie tease, luxury penthouse"
+Output: upper body, medium shot, luxury penthouse, floor-to-ceiling windows, city lights bokeh, soft ambient lighting, silk sheets, bedroom eyes, half-lidded, seductive smile, biting lip, flushed, leaning forward, cleavage focus, inviting, warm glow
 """
 
 
@@ -184,8 +213,8 @@ async def enhance_prompt(description: str) -> str:
                     {"role": "user",    "content": description},
                 ],
                 "stream":     False,
-                "keep_alive": "2m",
-                "options":    {"temperature": 0.4, "num_predict": 200, "think": False},
+                "keep_alive": "10m",
+                "options":    {"temperature": 0.4, "num_predict": 350},
             })
         if r.is_success:
             return r.json().get("message", {}).get("content", description).strip()

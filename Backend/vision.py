@@ -16,6 +16,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import time as _t
+
 import cv2
 import numpy as np
 import websockets
@@ -45,6 +47,10 @@ _last_capture_at  = 0.0
 
 # Emotion state — read by server.py's build_system_prompt()
 _last_emotion: dict = {"dominant": "neutral", "confidence": 0.5, "scores": {}}
+
+# Presence + latest frame — read by server.py for always-on listening gate + visual context
+_last_seen_at:   float = 0.0   # monotonic time of last frame with any face
+_last_frame_b64: str   = ""    # most recent raw JPEG b64 frame
 _emotion_frame_count: int = 0
 
 # Human-readable labels for the more clinical DeepFace names
@@ -135,13 +141,23 @@ def _maybe_auto_capture(img: np.ndarray, face, confidence: float) -> None:
 
 def load_vision_models() -> None:
     global _app
+    import io, contextlib
+
+    # Suppress ONNX Runtime verbose provider/model logs
+    try:
+        import onnxruntime as ort
+        ort.set_default_logger_severity(3)  # 3 = ERROR only
+    except Exception:
+        pass
+
     from insightface.app import FaceAnalysis
     print("[vision] loading InsightFace...", flush=True)
-    _app = FaceAnalysis(
-        name="buffalo_l",
-        providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-    )
-    _app.prepare(ctx_id=0, det_size=(640, 480))
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        _app = FaceAnalysis(
+            name="buffalo_l",
+            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+        )
+        _app.prepare(ctx_id=0, det_size=(640, 480))
     print("[vision] InsightFace ready", flush=True)
     _reload_embeddings()
     if _tyler_embeddings:
@@ -152,7 +168,8 @@ def load_vision_models() -> None:
     # Warm up DeepFace emotion model on first load to avoid first-call delay
     try:
         dummy = np.zeros((112, 112, 3), dtype=np.uint8)
-        _detect_emotion(dummy)
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            _detect_emotion(dummy)
         print("[vision] emotion model warmed up", flush=True)
     except Exception:
         pass
@@ -161,7 +178,7 @@ def load_vision_models() -> None:
 # ── Frame analysis ────────────────────────────────────────────────────────────
 
 def analyze_frame(b64_jpeg: str) -> dict:
-    global _emotion_frame_count, _last_emotion
+    global _emotion_frame_count, _last_emotion, _last_seen_at, _last_frame_b64
 
     base_result = {
         "present":            False,
@@ -176,6 +193,9 @@ def analyze_frame(b64_jpeg: str) -> dict:
     if _app is None:
         return base_result
 
+    # Always store the latest frame so server.py can use it for visual context
+    _last_frame_b64 = b64_jpeg
+
     try:
         img_bytes = base64.b64decode(b64_jpeg)
         img_array = np.frombuffer(img_bytes, np.uint8)
@@ -184,6 +204,8 @@ def analyze_frame(b64_jpeg: str) -> dict:
             return base_result
 
         faces = _app.get(img)
+        if faces:
+            _last_seen_at = _t.monotonic()   # face detected — update presence timestamp
         if not faces:
             return base_result
 

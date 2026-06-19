@@ -19,7 +19,7 @@ interface ImagesWidgetProps {
   onInitialHandled?: () => void
 }
 
-const IMAGES_BASE = 'file:///C:/Users/tyler/Pictures/Images/'
+const IMAGES_BASE = 'maya-images://'
 
 function fmtBytes(n: number): string {
   if (n < 1024)       return `${n} B`
