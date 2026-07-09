@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
 import { useDraggable } from '../hooks/useDraggable'
-import { ALARM_WS } from '../constants'
+import { ALARM_WS, wsUrl } from '../constants'
 import styles from './AlarmWidget.module.css'
 
 interface Alarm { id: string; label: string; fire_at: string }
@@ -30,7 +30,7 @@ export default function AlarmWidget({ visible, isAway = false, fired = null }: P
     let reconnect: ReturnType<typeof setTimeout>
     let backoff = 2000
     function connect() {
-      const ws = new WebSocket(ALARM_WS)
+      const ws = new WebSocket(wsUrl(ALARM_WS))
       ws.onopen    = () => { setWsOk(true); backoff = 2000 }
       ws.onclose   = () => { setWsOk(false); backoff = Math.min(backoff * 1.5, 30_000); reconnect = setTimeout(connect, backoff) }
       ws.onerror   = () => ws.close()

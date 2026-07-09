@@ -177,6 +177,9 @@ async def _broadcast(msg: dict) -> None:
 # ── WebSocket handler ─────────────────────────────────────────────────────────
 
 async def handle_client(websocket) -> None:
+    import auth
+    if not await auth.check(websocket):
+        return
     _clients.add(websocket)
     try:
         # Send current cache immediately

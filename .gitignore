@@ -81,3 +81,12 @@ Thumbs.db
 
 # ── Claude Code internal ──────────────────────────────────────────────────────
 .claude/
+MAYA_Audit_and_Remediation_Plan.md
+.gitignore
+MAYA_Code_Audit_v2.md
+MAYA_Code_Audit_v3.md
+MAYA_Code_Audit.md
+Backend/models/.session_token
+Backend/models/www.pornhub.com_cookies.txt
+Backend/models/.session_token
+Backend/models/.session_token

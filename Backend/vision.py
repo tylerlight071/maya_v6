@@ -53,6 +53,10 @@ _last_seen_at:   float = 0.0   # monotonic time of last frame with any face
 _last_frame_b64: str   = ""    # most recent raw JPEG b64 frame
 _emotion_frame_count: int = 0
 
+# Identity verification — monotonic time Tyler was last positively recognized.
+# Used as a FAIL-CLOSED security gate for protected modes (e.g. companion).
+_last_recognized_at: float = 0.0
+
 # Human-readable labels for the more clinical DeepFace names
 _EMOTION_DISPLAY = {
     "angry":   "frustrated",
@@ -177,8 +181,26 @@ def load_vision_models() -> None:
 
 # ── Frame analysis ────────────────────────────────────────────────────────────
 
+def tyler_recently_verified(max_age_secs: float = 30.0) -> bool:
+    """FAIL-CLOSED identity gate for protected modes.
+
+    Returns True only if Tyler was *positively face-recognized* within the last
+    `max_age_secs`. Unlike the presence check, this never fails open: if vision
+    is unavailable, no reference images are loaded, or Tyler has not been
+    recognized recently, it returns False and the protected mode stays locked.
+    """
+    try:
+        if _app is None or not _tyler_embeddings:
+            return False
+        if _last_recognized_at <= 0.0:
+            return False
+        return (_t.monotonic() - _last_recognized_at) < max_age_secs
+    except Exception:
+        return False   # any error -> deny (fail closed)
+
+
 def analyze_frame(b64_jpeg: str) -> dict:
-    global _emotion_frame_count, _last_emotion, _last_seen_at, _last_frame_b64
+    global _emotion_frame_count, _last_emotion, _last_seen_at, _last_frame_b64, _last_recognized_at
 
     base_result = {
         "present":            False,
@@ -247,6 +269,7 @@ def analyze_frame(b64_jpeg: str) -> dict:
 
         if best > FACE_RECOG_FLOOR:
             confidence = round(min((best - FACE_RECOG_FLOOR) / FACE_RECOG_RANGE, 1.0), 2)
+            _last_recognized_at = _t.monotonic()   # identity gate — Tyler positively verified
             _maybe_auto_capture(img, largest, confidence)
             return {
                 "present":            True,
@@ -277,6 +300,9 @@ def analyze_frame(b64_jpeg: str) -> dict:
 VISION_MIN_INTERVAL = 1.0   # seconds between analyses (server-side rate limit ≈ 1 fps)
 
 async def handle_vision_client(websocket) -> None:
+    import auth
+    if not await auth.check(websocket):
+        return
     print("[vision] client connected", flush=True)
     last_analysis = 0.0
     try:

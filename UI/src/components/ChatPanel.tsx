@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import type { MutableRefObject } from 'react'
 import type { Message, MayaState } from '../types'
 import type {} from '../types/electron'  // augments Window with mayaElectron
-import { WS_URL, TIMING } from '../constants'
+import { WS_URL, TIMING, wsUrl } from '../constants'
 import { useDraggable } from '../hooks/useDraggable'
 import styles from './ChatPanel.module.css'
 
@@ -50,14 +50,16 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
     if (visible) initTopLeft(20, 65)
   }, [visible, initTopLeft])
 
-  // WebSocket with auto-reconnect
+  // WebSocket with exponential-backoff auto-reconnect
   useEffect(() => {
     let reconnectTimer: ReturnType<typeof setTimeout>
+    const retryRef = { current: TIMING.WS_RECONNECT_MS as number }
 
     function connect() {
-      const ws = new WebSocket(WS_URL)
+      const ws = new WebSocket(wsUrl(WS_URL))
 
       ws.onopen = () => {
+        retryRef.current = TIMING.WS_RECONNECT_MS   // reset backoff on success
         setWsConnected(true)
         // Give App.tsx a direct send handle so it can sync widget state in real-time
         if (wsSendRef) {
@@ -70,7 +72,8 @@ export default function ChatPanel({ visible, isAway = false, onStateChange, onAc
       ws.onclose = () => {
         setWsConnected(false)
         if (wsSendRef) wsSendRef.current = null
-        reconnectTimer = setTimeout(connect, TIMING.WS_RECONNECT_MS)
+        reconnectTimer = setTimeout(connect, retryRef.current)
+        retryRef.current = Math.min(retryRef.current * 2, TIMING.WS_RECONNECT_MAX_MS)
       }
 
       ws.onerror = () => ws.close()

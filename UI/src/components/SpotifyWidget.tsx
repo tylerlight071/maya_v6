@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { SPOTIFY_WS } from '../constants'
+import { SPOTIFY_WS, wsUrl } from '../constants'
 import { useDraggable } from '../hooks/useDraggable'
 import styles from './SpotifyWidget.module.css'
 
@@ -105,7 +105,7 @@ export default function SpotifyWidget({ visible, isAway = false }: SpotifyWidget
     let reconnect: ReturnType<typeof setTimeout>
 
     function connect() {
-      const ws = new WebSocket(SPOTIFY_WS)
+      const ws = new WebSocket(wsUrl(SPOTIFY_WS))
       ws.onopen  = () => ws.send(JSON.stringify({ type: 'get_current' }))
       ws.onerror = () => ws.close()
       ws.onclose = () => { setWsState('connecting'); reconnect = setTimeout(connect, 2000) }

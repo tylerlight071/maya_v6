@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useDraggable } from '../hooks/useDraggable'
 import styles from './NewsWidget.module.css'
+import { wsUrl } from '../constants'
 
 interface Article {
   title:        string
@@ -55,7 +56,7 @@ export default function NewsWidget({ visible, isAway = false, onBrowse }: Props)
     let backoff = 1000
 
     function connect() {
-      const ws = new WebSocket(WS_URL)
+      const ws = new WebSocket(wsUrl(WS_URL))
       ws.onopen    = () => { setConnected(true); backoff = 1000 }
       ws.onclose   = () => {
         setConnected(false)

@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { IMAGEGEN_WS } from '../constants'
+import { IMAGEGEN_WS, wsUrl } from '../constants'
 import { useDraggable } from '../hooks/useDraggable'
 import styles from './ImageGenWidget.module.css'
 
@@ -17,7 +17,7 @@ interface ImageGenWidgetProps {
   isAway?:  boolean
 }
 
-const IMAGES_BASE = 'file:///C:/Users/tyler/Pictures/Images/'
+const IMAGES_BASE = 'maya-images://'
 
 const STATUS_LABEL: Record<GenStatus['status'], string> = {
   idle:       'READY',
@@ -103,7 +103,7 @@ export default function ImageGenWidget({ visible, isAway = false }: ImageGenWidg
     let backoff = 2000
 
     function connect() {
-      const ws = new WebSocket(IMAGEGEN_WS)
+      const ws = new WebSocket(wsUrl(IMAGEGEN_WS))
       ws.onopen  = () => { setWsOk(true); backoff = 2000 }
       ws.onerror = () => ws.close()
       ws.onclose = () => {
@@ -307,9 +307,6 @@ function drawIdleScanner(ctx: CanvasRenderingContext2D, W: number, H: number, t:
 
   // Radar sweep
   const sweep = (t * 0.8) % (Math.PI * 2)
-  const grad = ctx.createConicalGradient
-    ? null  // not standard, use manual
-    : null
   // Manual sweep arc
   ctx.save()
   ctx.translate(cx, cy)

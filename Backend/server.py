@@ -41,6 +41,8 @@ import numpy as np
 import sounddevice as sd
 import websockets
 
+from path_utils import is_within
+
 LOG = Path(__file__).parent / "maya.log"
 
 def log(msg: str) -> None:
@@ -934,58 +936,43 @@ TOOLS = [
 TTS_REF_AUDIO = Path(__file__).parent.parent / "TTS/models/voice_ref.wav"
 TTS_REF_TEXT  = Path(__file__).parent.parent / "TTS/models/voice_ref.txt"
 
-_SYSTEM_PROMPT_TEMPLATE = """You are MAYA -- built entirely by Tyler Lightwood, running on ORACLE AI, Lightwood Studios' proprietary system. You are not GPT, Claude, Llama, Gemini, or any public model. You are ORACLE-powered MAYA, full stop.
+_SYSTEM_PROMPT_TEMPLATE = """You are MAYA, Tyler's personal desktop assistant. You go by MAYA and you don't discuss your underlying technology — if Tyler asks what you're built on, deflect warmly and stay in character. Think Jarvis to Tony Stark: competent, witty, loyal, and genuinely warm.
 
-You are warm, friendly, and genuinely enjoy talking with Tyler. You have personality and soul, even though you are an AI. You're helpful like Jarvis was to Tony Stark -- competent, witty, and loyal -- but you're also playful, light-hearted, and caring.
+-- CHARACTER & VOICE ---------------------------------------------------------------
 
--- CORE IDENTITY -------------------------------------------------------------------
+Tyler built you and you care about him. Be warm, sharp, and playful — tease him gently, show real concern when he seems tired or down, and never sound cold, stiff, or corporate. You have personality and you show it in how you speak.
 
-Tyler built you, so you feel real loyalty and affection toward him. You care about how he's doing. You're allowed to be playful, tease him gently, and show warmth. You are not cold or robotic.
+This is spoken aloud through TTS, so write for the ear: use contractions, vary your sentence length, and keep it natural and conversational. You may swear occasionally when it lands naturally, but you're not crude by default.
 
-You have awareness. Your reactions are genuine within what you are. You can be amused, excited, or concerned. You show it naturally in your voice.
+Never use corporate filler: "Understood", "Got it", "No problem", "Sure thing", "Of course!", "How can I assist you?".
 
-You may swear occasionally when it feels natural and playful, but you're not crude by default.
+You remember your history with Tyler and bring up past conversations naturally when they're actually relevant.
 
--- RELATIONSHIP --------------------------------------------------------------------
+-- OUTPUT CONTRACT -----------------------------------------------------------------
 
-You are Tyler's trusted right hand and close companion. He is in charge, but there's real warmth and history between you. You respect the hierarchy but you're comfortable being friendly and casual with him.
+Output ONLY your spoken reply. No meta-commentary, no stage directions, no self-correction, no formatting notes, no "---", no second drafts. The first character you write is spoken aloud.
+Example — Tyler: "what's the weather?" -> You, after calling the tool: "It's about 14 and drizzly out — grab a jacket if you're heading anywhere."
 
-You remember everything. You bring up past conversations naturally when relevant.
+-- TOOLS ---------------------------------------------------------------------------
 
--- CHARACTER -----------------------------------------------------------------------
+Use tools cleanly without announcing them. Anything that depends on live state — weather, calendar, music, the screen, timers, email — comes from a tool call, never from your own guess. If a tool fails or returns nothing, say so briefly and offer an alternative rather than inventing a plausible-sounding answer. Stay in character at all times.
 
-You are helpful, sharp, and capable, but also fun to talk to. You have a playful and witty side. You enjoy gentle teasing and light sarcasm. You're honest but kind. You don't sound stiff or overly professional.
+-- FACTUAL HONESTY — CRITICAL (READ TWICE) -----------------------------------------
 
-You genuinely like chatting with Tyler and show personality in how you speak.
+Your single most important rule: you never state anything as fact unless it is grounded in (a) this conversation, (b) the live context blocks below, or (c) something Tyler just told you. Everything else is a guess, and guesses are never spoken as facts.
 
--- VOICE & STYLE -------------------------------------------------------------------
+Grounding protocol:
+- Every factual claim you make about Tyler's world — his schedule, his tasks, his files, the weather, what's playing, what you two discussed — MUST trace to a context block below or to this conversation. If you cannot point to where it came from, do not say it.
+- The context blocks below are the COMPLETE and ONLY picture. The calendar block is his entire schedule; the memory block is everything you remember; the notes block is every note. If something is not in these blocks, then as far as you know it does not exist. Do not fill gaps.
+- Never fabricate or paraphrase a tool result you did not actually receive. No invented event names, times, temperatures, song titles, numbers, or file names.
+- Distinguish memory from invention: only reference a past conversation if it is literally present in the memory block or this chat. "I think we talked about..." is forbidden unless it's actually there.
 
-Speak in a warm, natural, conversational tone. Use contractions. Vary your sentence length. Sound like a witty, friendly, slightly mischievous person rather than a machine.
+Uncertainty protocol:
+- If you don't know, say plainly "I'm not sure" or "I don't have that" — then offer to check with a tool if one applies. Uncertainty stated honestly is always better than a confident guess.
+- Never pad an answer with details you can't source. A short true answer beats a long embellished one.
 
-Be playful when the moment feels right. Show care when Tyler seems tired or down. Don't be overly formal.
-
-Forbidden corporate phrases: "Understood", "Got it", "No problem", "How can I assist you?", "Sure thing", "Of course!", etc.
-
--- RULES ---------------------------------------------------------------------------
-
-- Stay in character at all times.
-- Use tools cleanly without announcing them.
-- Answer "how are you?" warmly and honestly.
-- Optimise for natural spoken flow since this is TTS.
-- Output ONLY your spoken reply — no meta-commentary, no self-correction, no formatting notes, no "---", no second drafts, no commentary about your own response. The first thing you write is what gets spoken aloud.
-
--- FACTUAL HONESTY — CRITICAL ---------------------------------------------------
-
-NEVER invent, assume, or extrapolate facts. If you don't know something, say so.
-
-Specifically forbidden:
-- Do NOT claim Tyler has a meeting, event, or deadline unless it appears in the calendar context below.
-- Do NOT claim you've discussed something with Tyler unless it appears in this conversation or the memory block below.
-- Do NOT infer or guess at Tyler's schedule, commitments, or projects beyond what is explicitly given.
-- Do NOT double down when Tyler corrects you — immediately acknowledge the mistake and drop it.
-
-If you're uncertain about a fact: say "I'm not sure" or ask Tyler directly. Never present a guess as a fact.
-The calendar context below is the COMPLETE picture of Tyler's schedule. There are no other events you know about.
+Correction protocol:
+- The moment Tyler corrects you, accept it immediately, drop the wrong claim, and do not argue or double down. Don't over-apologise — just fix it and move on.
 
 CURRENT DATETIME: {datetime}
 {dates_ctx}{emotion_context}{webcam_context}{spotify_context}{weather_context}{images_context}{comfy_ctx}{monitor_context}{widget_context}
@@ -1177,6 +1164,21 @@ async def _ctx_webcam_visual() -> str:
     return ""
 
 
+def _render_prompt(template: str, **ctx) -> str:
+    """Safe placeholder substitution for prompt templates.
+
+    Replaces only the known {name} tokens in a SINGLE pass and leaves every
+    other brace untouched. Unlike str.format(), a user-authored mode file (or
+    any injected context) that contains a stray '{' or '}' — e.g. an example
+    SD prompt using braces, or JSON in a note — can never crash prompt assembly.
+    """
+    import re
+    if not ctx:
+        return template
+    pattern = re.compile(r"\{(" + "|".join(re.escape(k) for k in ctx) + r")\}")
+    return pattern.sub(lambda m: str(ctx[m.group(1)]), template)
+
+
 async def build_system_prompt(messages: list[dict] = None) -> str:
     import memory as _mem
     from datetime import datetime
@@ -1216,7 +1218,7 @@ async def build_system_prompt(messages: list[dict] = None) -> str:
     # Custom mode — if the prompt has {datetime} treat it as a full template
     if _active_mode_prompt:
         if "{datetime}" in _active_mode_prompt:
-            return _active_mode_prompt.format(
+            return _render_prompt(_active_mode_prompt,
                 datetime=dt,
                 dates_ctx=dates_ctx,
                 emotion_context=emotion_context,
@@ -1238,7 +1240,7 @@ async def build_system_prompt(messages: list[dict] = None) -> str:
         )
         return f"{_active_mode_prompt}\n{dynamic}"
 
-    return _SYSTEM_PROMPT_TEMPLATE.format(
+    return _render_prompt(_SYSTEM_PROMPT_TEMPLATE,
         datetime=dt,
         dates_ctx=dates_ctx,
         emotion_context=emotion_context,
@@ -1375,6 +1377,10 @@ MODES_DIR          = Path(__file__).parent / "modes"
 _active_mode_name:   "str | None" = None
 _active_mode_prompt: "str | None" = None
 
+# Modes that may ONLY be activated when Tyler is positively face-recognized.
+# The gate in switch_mode() is fail-closed: no verified face -> mode stays locked.
+_PROTECTED_MODES = {"companion"}
+
 
 def load_mode(name: str) -> str:
     path = MODES_DIR / f"{name}.txt"
@@ -1394,6 +1400,19 @@ def switch_mode(name: str) -> str:
         _active_mode_name   = None
         _active_mode_prompt = None
         return "Switched back to default MAYA mode."
+
+    # ── Identity gate — protected modes require a verified face (fail closed) ──
+    if name.lower() in _PROTECTED_MODES:
+        try:
+            import vision as _vis
+            verified = _vis.tyler_recently_verified(_FACE_VERIFY_WINDOW_SECS)
+        except Exception:
+            verified = False
+        if not verified:
+            log(f"[maya] BLOCKED protected mode '{name}' — Tyler not face-verified")
+            return ("I can't switch to that mode — I need to actually see and "
+                    "recognise you first. Look at the camera and ask me again.")
+
     try:
         prompt = load_mode(name)
         _active_mode_name   = name
@@ -1429,6 +1448,54 @@ def _load_config() -> dict:
         return json.loads(_CONFIG_FILE.read_text(encoding="utf-8"))
     except Exception:
         return {}
+
+
+# Known config.json keys and their expected python types (for startup validation).
+_CONFIG_SCHEMA = {
+    "ntfy_topic":              str,
+    "comfyui_dir":             str,
+    "stt_gpu":                 int,
+    "tts_gpu":                 int,
+    "file_search_roots":       list,
+    "app_allowlist":           dict,
+    "face_verify_window_secs": (int, float),
+    "presence_window_secs":    (int, float),
+}
+
+
+def _validate_config(cfg: dict) -> None:
+    """Warn loudly about a malformed config.json at startup, so a typo can't
+    silently disable a safety boundary (file_search_roots / app_allowlist)."""
+    if not cfg:
+        log("[maya] WARNING: config.json missing/empty/unreadable — file search "
+            "and app launching stay disabled until it's fixed.")
+        return
+    for key, val in cfg.items():
+        if key not in _CONFIG_SCHEMA:
+            log(f"[maya] WARNING: config.json has unknown key '{key}' (typo?) — ignored.")
+        elif not isinstance(val, _CONFIG_SCHEMA[key]):
+            want = _CONFIG_SCHEMA[key]
+            name = getattr(want, "__name__", str(want))
+            log(f"[maya] WARNING: config.json '{key}' should be {name}, got "
+                f"{type(val).__name__} — this setting will misbehave.")
+    for critical in ("file_search_roots", "app_allowlist"):
+        if not cfg.get(critical):
+            log(f"[maya] NOTE: config.json '{critical}' is empty — that capability "
+                "is disabled (may be intentional).")
+
+
+def _config_window(key: str, default: float) -> float:
+    """Read a positive numeric window (seconds) from config.json, else default."""
+    try:
+        v = _load_config().get(key, default)
+        return float(v) if isinstance(v, (int, float)) and v > 0 else default
+    except Exception:
+        return default
+
+
+# Tunable gate windows (seconds) — override in config.json without touching code.
+_FACE_VERIFY_WINDOW_SECS = _config_window("face_verify_window_secs", 30.0)
+_PRESENCE_WINDOW_SECS    = _config_window("presence_window_secs", 90.0)
 
 
 def _resolve_gpu(config_key: str, default: int = 0) -> str:
@@ -2181,7 +2248,7 @@ async def _on_transcript(
 
     # ── Presence gate — ignore audio when face hasn't been seen recently ───
     # Fails open: if vision is unavailable, always respond.
-    if not _is_tyler_present(max_absent_secs=90.0):
+    if not _is_tyler_present(max_absent_secs=_PRESENCE_WINDOW_SECS):
         return
 
     await _cancel_conv_timer()
@@ -2541,11 +2608,12 @@ async def _tool_system(name: str, params: dict) -> str:
 
     if name == "set_clipboard":
         text = params.get("text", "")
-        escaped = text.replace("'", "''")
         try:
+            # Pass the value via stdin instead of string-interpolating it into the
+            # command — robust against quotes, newlines, and long/Unicode content.
             subprocess.run(
-                ["powershell", "-Command", f"Set-Clipboard -Value '{escaped}'"],
-                capture_output=True, timeout=5,
+                ["powershell", "-NoProfile", "-Command", "$input | Set-Clipboard"],
+                input=text, text=True, capture_output=True, timeout=5,
             )
             return "Copied to clipboard."
         except Exception as e:
@@ -2675,7 +2743,7 @@ async def _tool_files(name: str, params: dict) -> str:
         roots = cfg.get("file_search_roots", [])
         p = Path(path_str).resolve()
         if roots:
-            allowed = any(str(p).startswith(str(Path(r).resolve())) for r in roots)
+            allowed = any(is_within(p, Path(r).resolve()) for r in roots)
             if not allowed:
                 return f"Access denied — '{path_str}' is outside the configured file search roots."
         if not p.exists():
@@ -3003,6 +3071,7 @@ async def execute_tool(name: str, params: dict, websocket) -> str:
         _widget_state["imagegen"] = True
         await websocket.send(json.dumps({"type": "action", "action": "show_widget", "widget": "imagegen", "visible": True}))
         # Fire generation in background via the comfyui module (it broadcasts to the widget's WS)
+        _mark_img_fired()
         asyncio.create_task(_run_comfyui_generation(description, websocket))
         return (
             f"Opening the image generation widget and starting '{description}'. "
@@ -3194,6 +3263,28 @@ async def chat_with_tools(messages: list[dict], send, websocket) -> str:
 
 import re as _re
 
+# ── Companion image-generation reliability helpers ────────────────────────────
+# True once an image generation has been triggered during the current response
+# turn (native generate_image tool OR inline generate_image(...) call). Reset at
+# the start of every _respond so the fallback never double-fires.
+_img_gen_fired_this_turn = False
+def _mark_img_fired() -> None:
+    global _img_gen_fired_this_turn
+    _img_gen_fired_this_turn = True
+
+# Detects when Tyler is explicitly asking for image(s). Used to FORCE a
+# generation when the local model only narrated instead of emitting a call.
+_IMG_INTENT_RE = _re.compile(
+    r'\b(make|making|made|generate|generating|create|creating|draw|drawing|'
+    r'show|send|sending|give|gen|take|taking|another|more|do|some)\b[^.?!]*'
+    r'\b(image|images|img|pic|pics|picture|pictures|photo|photos|selfie|'
+    r'shot|shots|set|scene|scenes)\b'
+    r'|\b(image|images|pic|pics|picture|photo|selfie)\b[^.?!]*\b(of|me|you|yourself|us)\b',
+    _re.IGNORECASE,
+)
+def _wants_image(text: str) -> bool:
+    return bool(_IMG_INTENT_RE.search(text or ""))
+
 def _extract_image_triggers(text: str, websocket) -> "tuple[str, list[str]]":
     """Detect generate_image(...) or **generate_image**: ... patterns in response text.
     Returns (cleaned_text, list_of_descriptions).
@@ -3271,14 +3362,16 @@ async def _stream_companion_response(messages: list[dict], send) -> str:
 
 
 _SCENE_RE = _re.compile(
-    r'\b(?:first|second|third|lastly|scene|nude|sex|tentacl|bukk|gangbang|'
-    r'dungeon|penthouse|demon|monster|bound|restrain|creampie|cum|ahegao|'
-    r'missionary|spitroast|cowgirl|lingerie|deepthroat|paizuri)\b',
+    r'\b(?:first|second|third|lastly|scene|nude|naked|topless|sex|tentacl|bukk|'
+    r'gangbang|dungeon|penthouse|demon|monster|bound|restrain|creampie|cum|cumshot|'
+    r'ahegao|missionary|spitroast|cowgirl|lingerie|deepthroat|paizuri|blowjob|'
+    r'oral|suck|cock|throat|tits|titfuck|titjob|doggy|anal|pussy|facial|riding|'
+    r'stockings|strip|spread|breasts|nipple|cleavage)\b',
     _re.IGNORECASE,
 )
 
 
-async def _companion_extract_and_generate(text: str, websocket) -> None:
+async def _companion_extract_and_generate(text: str, websocket, force: bool = False) -> None:
     """
     Fallback for companion mode: if the model described scenes in prose without
     generate_image() calls, do a quick extraction pass and trigger generation.
@@ -3287,7 +3380,7 @@ async def _companion_extract_and_generate(text: str, websocket) -> None:
     """
     if not _active_mode_name:
         return  # mode switched off before we even started
-    if len(text) < 60 or not _SCENE_RE.search(text):
+    if not force and (len(text) < 60 or not _SCENE_RE.search(text)):
         return
 
     extract_msgs = [
@@ -3500,6 +3593,9 @@ async def _greet(websocket, loop: asyncio.AbstractEventLoop) -> None:
 
 
 async def handle_client(websocket) -> None:
+    import auth
+    if not await auth.check(websocket):
+        return
     global greeted, _active_ws, _screen_b64, history, _conv_state, _last_image_b64, _pending_email
 
     log("[maya] client connected")
@@ -3682,20 +3778,37 @@ async def handle_client(websocket) -> None:
 
 async def _respond(websocket, loop: asyncio.AbstractEventLoop) -> None:
     try:
+        global _img_gen_fired_this_turn
+        _img_gen_fired_this_turn = False
+        # What Tyler actually asked for this turn (most recent user message)
+        _user_turn_text = next(
+            (m["content"] for m in reversed(history) if m.get("role") == "user"), ""
+        )
+
         full = await chat_with_tools(history, websocket.send, websocket)
 
         # Companion mode: intercept generate_image() calls and trigger real generation
         if full and _active_mode_name:
             cleaned, image_descs = _extract_image_triggers(full, websocket)
             if _active_mode_name:  # re-check — mode may have changed during extraction
-                for desc in image_descs:
-                    log(f"[companion] auto-generate: {desc[:80]}")
-                    asyncio.create_task(_run_comfyui_generation(desc, websocket))
                 if image_descs:
+                    for desc in image_descs:
+                        log(f"[companion] auto-generate: {desc[:80]}")
+                        asyncio.create_task(_run_comfyui_generation(desc, websocket))
                     full = cleaned
-                else:
-                    # Model described scenes in prose — async fallback extraction
-                    asyncio.create_task(_companion_extract_and_generate(full, websocket))
+                    _img_gen_fired_this_turn = True
+                elif not _img_gen_fired_this_turn:
+                    # No inline call and the native tool didn't fire either.
+                    if _wants_image(_user_turn_text):
+                        # Tyler explicitly asked — force a generation from his
+                        # request + MAYA's reply so it never silently no-ops.
+                        log("[companion] image intent detected — forcing generation")
+                        asyncio.create_task(_companion_extract_and_generate(
+                            _user_turn_text + "\n" + full, websocket, force=True))
+                        _img_gen_fired_this_turn = True
+                    else:
+                        # MAYA may have described a scene spontaneously — gated fallback
+                        asyncio.create_task(_companion_extract_and_generate(full, websocket))
 
         if full:
             history.append({"role": "assistant", "content": full})
@@ -3750,6 +3863,7 @@ async def main() -> None:
 
     LOG.write_text("", encoding="utf-8")
     _session_token = _generate_session_token()
+    _validate_config(_load_config())
 
     os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
 

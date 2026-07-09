@@ -145,6 +145,9 @@ async def _broadcast_list() -> None:
 
 
 async def _handler(websocket) -> None:
+    import auth
+    if not await auth.check(websocket):
+        return
     _clients.add(websocket)
     try:
         await _broadcast_list()  # send current state on connect

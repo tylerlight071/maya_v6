@@ -1,5 +1,19 @@
 export const WS_URL = 'ws://127.0.0.1:8765'
 
+/**
+ * Append the per-session auth token (written by the Python backend, exposed by
+ * the Electron preload) to a WebSocket URL. The backend rejects any connection
+ * without a valid token. Every `new WebSocket(...)` in the UI MUST go through
+ * this — a bare URL will be closed by the server with code 4401.
+ *
+ * Outside Electron (plain browser, no preload) there's no token, so the URL is
+ * sent without one and the backend rejects it by design.
+ */
+export function wsUrl(base: string): string {
+  const token = window.mayaElectron?.getSessionToken?.() ?? ''
+  return token ? `${base}?token=${encodeURIComponent(token)}` : base
+}
+
 export const CANVAS = {
   RADIUS_FACTOR: 0.145,
   ORB_Y_FACTOR: 0.5,

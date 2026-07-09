@@ -8,7 +8,7 @@
   },
   "6": {
     "inputs": {
-      "text": "mayaXL, masterpiece, best quality, perfect quality, ultra-detailed, absurdres, 1girl, solo, long straight platinum blonde hair, saturated violet eyes, vibrant iris, detailed iris, strong limbal ring, fair skin, smooth complexion, subsurface scattering, detailed face, detailed eyes, subtle dark eyeliner, soft glossy lips, light blush, natural makeup, detailed eyelashes, detailed hair strands, realistic shading, cinematic lighting, soft rim light, medium breasts, perky breasts, looking at viewer",
+      "text": "mayaXL, masterpiece, best quality, perfect quality, ultra-detailed, absurdres, 1girl, long straight platinum blonde hair, saturated violet eyes, vibrant iris, detailed iris, strong limbal ring, fair skin, smooth complexion, subsurface scattering, detailed face, detailed eyes, expressive face, detailed facial expression, expressive eyes, subtle dark eyeliner, soft glossy lips, light blush, natural makeup, detailed eyelashes, detailed hair strands, realistic shading, cinematic lighting, soft rim light, medium breasts, perky breasts",
       "clip": ["21", 1]
     },
     "class_type": "CLIPTextEncode",
@@ -16,7 +16,7 @@
   },
   "7": {
     "inputs": {
-      "text": "lowres, bad anatomy, worst quality, watermark, blurry, bad hands, extra fingers, deformed, ugly, text, signature, missing limbs, floating limbs, poorly drawn hands, poorly drawn feet, blurry face, soft face, duplicate, 2girls, multiple girls, male, 1boy, extra people, crowd, flower, flowers, floral, flower petals, flower decoration, flower crown, flower accessory, flower print, lotus, rose, lily, daisy, sunflower, botanical,",
+      "text": "lowres, bad anatomy, worst quality, watermark, blurry, bad hands, extra fingers, deformed, ugly, text, signature, missing limbs, floating limbs, poorly drawn hands, poorly drawn feet, blurry face, soft face, expressionless, blank expression, flat expression, emotionless, dead eyes, duplicate, 2girls, multiple girls, flower, flowers, floral, flower petals, flower decoration, flower crown, flower accessory, flower print, lotus, rose, lily, daisy, sunflower, botanical,",
       "clip": ["21", 1]
     },
     "class_type": "CLIPTextEncode",
@@ -60,7 +60,7 @@
   },
   "15": {
     "inputs": {
-      "guide_size": 512,
+      "guide_size": 768,
       "guide_size_for": "bbox",
       "max_size": 1024,
       "seed": 538366446821719,
@@ -68,7 +68,7 @@
       "cfg": 7.5,
       "sampler_name": "euler",
       "scheduler": "karras",
-      "denoise": 0.35,
+      "denoise": 0.45,
       "feather": 5,
       "noise_mask": true,
       "force_inpaint": true,
@@ -101,7 +101,7 @@
   },
   "18": {
     "inputs": {
-      "lora_name": "poppydid_perfectillustriousxl.safetensors",
+      "lora_name": "mayaXL_v1_illustrious.safetensors",
       "strength_model": 0,
       "strength_clip": 0,
       "model": ["19", 0],
@@ -123,7 +123,7 @@
   },
   "20": {
     "inputs": {
-      "lora_name": "poppydid_perfectillustriousxl.safetensors",
+      "lora_name": "mayaXL_v1_illustrious.safetensors",
       "strength_model": 0,
       "strength_clip": 0,
       "model": ["18", 0],
@@ -134,7 +134,7 @@
   },
   "21": {
     "inputs": {
-      "lora_name": "poppydid_perfectillustriousxl.safetensors",
+      "lora_name": "mayaXL_v1_illustrious.safetensors",
       "strength_model": 0,
       "strength_clip": 0,
       "model": ["20", 0],

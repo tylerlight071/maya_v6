@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { IMAGES_WS } from '../constants'
+import { IMAGES_WS, wsUrl } from '../constants'
 import { useDraggable } from '../hooks/useDraggable'
 import styles from './ImagesWidget.module.css'
 
@@ -51,7 +51,7 @@ export default function ImagesWidget({ visible, isAway = false, initialFilename,
     let backoff = 2000
 
     function connect() {
-      const ws = new WebSocket(IMAGES_WS)
+      const ws = new WebSocket(wsUrl(IMAGES_WS))
       ws.onopen  = () => { setWsOk(true); backoff = 2000 }
       ws.onerror = () => ws.close()
       ws.onclose = () => {

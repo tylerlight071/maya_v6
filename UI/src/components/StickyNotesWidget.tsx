@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
 import { useDraggable } from '../hooks/useDraggable'
-import { STICKY_NOTES_WS } from '../constants'
+import { STICKY_NOTES_WS, wsUrl } from '../constants'
 import styles from './StickyNotesWidget.module.css'
 
 interface Note { id: string; text: string; created: number; updated: number }
@@ -21,7 +21,7 @@ export default function StickyNotesWidget({ visible, isAway = false }: Props) {
     let reconnect: ReturnType<typeof setTimeout>
     let backoff = 2000
     function connect() {
-      const ws = new WebSocket(STICKY_NOTES_WS)
+      const ws = new WebSocket(wsUrl(STICKY_NOTES_WS))
       ws.onopen    = () => { setWsOk(true); backoff = 2000 }
       ws.onclose   = () => { setWsOk(false); backoff = Math.min(backoff * 1.5, 30_000); reconnect = setTimeout(connect, backoff) }
       ws.onerror   = () => ws.close()

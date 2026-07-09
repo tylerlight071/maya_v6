@@ -607,6 +607,9 @@ async def _poll(cid: str, cs: str) -> None:
 # ── WebSocket handler ─────────────────────────────────────────────────────────
 
 async def handle_client(websocket) -> None:
+    import auth
+    if not await auth.check(websocket):
+        return
     _clients.add(websocket)
     cfg = load_config()
 

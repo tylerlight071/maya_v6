@@ -244,6 +244,9 @@ def get_active_tasks() -> list:
 # ── WebSocket handler ─────────────────────────────────────────────────────────
 
 async def handle_client(websocket) -> None:
+    import auth
+    if not await auth.check(websocket):
+        return
     _clients.add(websocket)
     try:
         # Push current state on connect

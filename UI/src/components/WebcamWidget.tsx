@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import { useDraggable } from '../hooks/useDraggable'
 import styles from './WebcamWidget.module.css'
+import { wsUrl } from '../constants'
 
 const VISION_WS       = 'ws://127.0.0.1:8766'
 const FRAME_INTERVAL  = 2000   // ms between frames sent to vision server
@@ -86,7 +87,7 @@ export default function WebcamWidget({ visible, devLogMode = false, onPresenceCh
     let backoff = 2000  // start at 2s, cap at 30s
 
     function connect() {
-      const ws = new WebSocket(VISION_WS)
+      const ws = new WebSocket(wsUrl(VISION_WS))
       ws.onerror = () => ws.close()
       ws.onopen  = () => { backoff = 2000 }  // reset backoff on successful connect
       ws.onmessage = e => {

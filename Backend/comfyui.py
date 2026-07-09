@@ -9,6 +9,7 @@ import contextlib
 import copy
 import json
 import random
+import re
 import shutil
 import time
 import uuid
@@ -97,34 +98,64 @@ POSE_LORAS: dict = _load_pose_loras()
 _POSE_SLOTS = ["18", "20", "21"]   # workflow nodes available for pose LoRAs
 
 
+# Common words that shouldn't count toward keyword matching on their own.
+_STOPWORDS = {"a", "an", "the", "of", "to", "with", "and", "her", "his",
+              "on", "in", "at", "is", "be", "for", "by"}
+
+
+def _normalize(text: str) -> set:
+    """Lowercase, split digit/letter boundaries (4boys -> '4 boys'), strip
+    punctuation, and return the set of words."""
+    t = text.lower()
+    t = re.sub(r'(?<=\d)(?=[a-z])|(?<=[a-z])(?=\d)', ' ', t)
+    t = re.sub(r'[^a-z0-9]+', ' ', t)
+    return set(t.split())
+
+
+def _keyword_score(desc_words: set, keyword: str) -> float:
+    """
+    Word-overlap score for one keyword phrase against the description words.
+    A full (order-independent) phrase match scores by specificity, so a long
+    specific phrase outranks a generic single word. A partial multi-word match
+    scores at half weight. A single stray word from a longer phrase scores 0.
+    """
+    words = [w for w in _normalize(keyword) if w not in _STOPWORDS]
+    if not words:
+        return 0.0
+    present = sum(1 for w in words if w in desc_words)
+    if present == len(words):
+        return float(len(words))        # full phrase — weighted by specificity
+    if len(words) >= 2 and present >= 2:
+        return present * 0.5            # partial multi-word match
+    return 0.0
+
+
 def select_pose_loras(description: str) -> "tuple[list[dict], str]":
     """
-    Score LoRAs against description, then pick at most one per category to avoid
-    conflicts. Within each category, winning LoRA is chosen randomly weighted by score.
-    Up to 3 LoRAs total (one per workflow slot).
+    Score LoRAs against the raw description with word-overlap matching, then
+    pick the single most-specific (highest-scoring) LoRA per category. Exact
+    ties break at random so repeated prompts still vary. Up to 3 LoRAs total
+    (one per workflow slot).
     """
-    dl = description.lower()
+    desc_words = _normalize(description)
 
     # Score every LoRA; group matches by category
     by_category: dict[str, list] = {}
     for filename, data in POSE_LORAS.items():
-        score = sum(1 for kw in data["keywords"] if kw in dl)
-        if score == 0:
+        score = sum(_keyword_score(desc_words, kw) for kw in data["keywords"])
+        if score <= 0:
             continue
         cat = data.get("category", "misc")
         by_category.setdefault(cat, []).append((score, filename, data))
 
-    # From each category pick ONE winner — weighted-random among candidates with score > 0
-    winners: list[tuple[int, str, dict]] = []
+    # From each category take the most specific match (highest score); break
+    # exact ties at random for variety. This prefers the specific LoRA over a
+    # generic one, instead of the old score-weighted random pick.
+    winners: list[tuple[float, str, dict]] = []
     for cat, candidates in by_category.items():
-        total = sum(s for s, _, _ in candidates)
-        r = random.uniform(0, total)
-        cumulative = 0.0
-        for score, filename, data in sorted(candidates, key=lambda x: x[0], reverse=True):
-            cumulative += score
-            if r <= cumulative:
-                winners.append((score, filename, data))
-                break
+        top = max(s for s, _, _ in candidates)
+        tied = [c for c in candidates if c[0] == top]
+        winners.append(random.choice(tied))
 
     # Sort winners by score descending; take up to 3
     winners.sort(key=lambda x: x[0], reverse=True)
@@ -134,7 +165,7 @@ def select_pose_loras(description: str) -> "tuple[list[dict], str]":
         return [], "full body, medium shot, wide angle"
 
     for score, filename, _ in selected:
-        print(f"[comfyui] pose LoRA: {filename} (score {score})", flush=True)
+        print(f"[comfyui] pose LoRA: {filename} (score {score:.2f})", flush=True)
 
     composition = selected[0][2]["composition"]
     result = [{"filename": fn, "strength": data["strength"], "triggers": data["triggers"]}
@@ -147,7 +178,7 @@ def select_pose_loras(description: str) -> "tuple[list[dict], str]":
 _ENHANCE_SYSTEM = """\
 You are an expert Stable Diffusion prompt engineer specialising in explicit anime/illustration.
 
-Convert the user's scene description into rich, comma-separated SD prompt tags. Be generous — expand every detail the scene implies. A good output has 20-35 tags covering: action/pose, setting/environment, lighting, mood, clothing/state, body language, and expression.
+Convert the user's scene description into focused, comma-separated SD prompt tags. Be selective — include only the tags the scene needs. A good output has 12-18 tags covering: action/pose, setting/environment, lighting, mood, clothing/state, body language, and expression. Keep it tight so the pose-LoRA trigger words placed ahead of your tags stay dominant.
 
 Do NOT add character appearance tags (hair, eye colour, body type) — LoRA handles those.
 Do NOT repeat quality tags (best quality, masterpiece, absurdres) — already present.
@@ -214,7 +245,7 @@ async def enhance_prompt(description: str) -> str:
                 ],
                 "stream":     False,
                 "keep_alive": "10m",
-                "options":    {"temperature": 0.4, "num_predict": 350},
+                "options":    {"temperature": 0.4, "num_predict": 200},
             })
         if r.is_success:
             return r.json().get("message", {}).get("content", description).strip()
@@ -514,17 +545,24 @@ async def generate(description: str, workflow_template: dict) -> "tuple[bool, st
         if node_id in workflow:
             workflow[node_id]["inputs"]["seed"] = random.randint(1, 2**31 - 1)
 
-    # Select and inject pose LoRAs (up to 3 can be mixed)
-    pose_loras, composition = select_pose_loras(description + " " + enhanced)
+    # Select and inject pose LoRAs (up to 3 can be mixed).
+    # Match on the RAW description so the LoRA signal isn't diluted or skewed by
+    # the enhancer's generic environment/expression tags.
+    pose_loras, composition = select_pose_loras(description)
+    # When several LoRAs stack they interfere with each other and with the
+    # identity LoRA. Scale strengths down as more combine so none washes out.
+    n_pose      = len(pose_loras)
+    stack_scale = 1.0 if n_pose <= 1 else (0.8 if n_pose == 2 else 0.65)
     all_triggers = []
     for i, slot in enumerate(_POSE_SLOTS):
         if slot not in workflow:
             continue
         if i < len(pose_loras):
-            lora = pose_loras[i]
+            lora     = pose_loras[i]
+            strength = round(lora["strength"] * stack_scale, 3)
             workflow[slot]["inputs"]["lora_name"]      = lora["filename"]
-            workflow[slot]["inputs"]["strength_model"] = lora["strength"]
-            workflow[slot]["inputs"]["strength_clip"]  = lora["strength"]
+            workflow[slot]["inputs"]["strength_model"] = strength
+            workflow[slot]["inputs"]["strength_clip"]  = strength
             all_triggers.append(lora["triggers"])
         else:
             # Zero out unused slots
@@ -591,6 +629,9 @@ _generation_lock: asyncio.Lock | None = None
 
 
 async def handle_client(websocket) -> None:
+    import auth
+    if not await auth.check(websocket):
+        return
     _clients.add(websocket)
     try:
         # Push current status on connect

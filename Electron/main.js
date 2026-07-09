@@ -27,12 +27,19 @@ function createWindow() {
 
     mainWindow.once('ready-to-show', () => mainWindow.show());
 
-    // Grant camera and mic permissions so getUserMedia() works in the renderer.
+    // Grant camera/mic/screen ONLY to our own renderer (the MAYA UI), never to
+    // arbitrary websites loaded inside the <webview> browser widget. Without the
+    // origin check, any page you browse to could silently turn on your camera/mic.
     try {
         const MEDIA = ['media', 'camera', 'microphone', 'display-capture', 'screen'];
-        session.defaultSession.setPermissionRequestHandler((_wc, perm, cb) => cb(MEDIA.includes(perm)));
+        const isTrustedOrigin = (url) =>
+            typeof url === 'string' &&
+            (url.startsWith('http://localhost:5173') || url.startsWith('file://'));
+        session.defaultSession.setPermissionRequestHandler((wc, perm, cb) =>
+            cb(isTrustedOrigin(wc?.getURL?.()) && MEDIA.includes(perm)));
         if (typeof session.defaultSession.setPermissionCheckHandler === 'function') {
-            session.defaultSession.setPermissionCheckHandler((_wc, perm) => MEDIA.includes(perm));
+            session.defaultSession.setPermissionCheckHandler((wc, perm, origin) =>
+                (isTrustedOrigin(origin) || isTrustedOrigin(wc?.getURL?.())) && MEDIA.includes(perm));
         }
     } catch (e) {
         console.error('[main] permission handler error:', e);
@@ -48,9 +55,12 @@ function createWindow() {
         mainWindow.setFullScreen(!mainWindow.isFullScreen());
     });
 
-    globalShortcut.register('CommandOrControl+Shift+I', () => {
-        mainWindow.webContents.toggleDevTools();
-    });
+    // DevTools only in development — don't ship a debug backdoor in packaged builds.
+    if (isDev) {
+        globalShortcut.register('CommandOrControl+Shift+I', () => {
+            mainWindow.webContents.toggleDevTools();
+        });
+    }
 
     // Screen capture — must live in main process (desktopCapturer restricted in renderer since Electron 20)
     ipcMain.handle('capture-screen', async () => {
@@ -145,7 +155,8 @@ function registerImageProtocol() {
         // Restrict to the Pictures/Images folder only
         const picturesDir = path.join(app.getPath('pictures'), 'Images');
         const resolved    = path.resolve(picturesDir, filePath);
-        if (!resolved.startsWith(picturesDir)) {
+        const rel = path.relative(picturesDir, resolved);
+        if (rel.startsWith('..') || path.isAbsolute(rel)) {
             callback({ error: -10 });  // BLOCKED — path traversal attempt
             return;
         }
@@ -185,7 +196,15 @@ async function importCookiesFromFile(cookieFile, targetSession, defaultUrl) {
     if (!fs.existsSync(cookieFile)) return 0;
     const lines = fs.readFileSync(cookieFile, 'utf-8').split('\n');
     let imported = 0;
-    for (const line of lines) {
+    for (const rawLine of lines) {
+        // Netscape format marks HttpOnly cookies with a "#HttpOnly_" domain prefix.
+        // Detect and strip it BEFORE the comment skip, so these aren't dropped.
+        let line = rawLine;
+        let httpOnly = false;
+        if (line.startsWith('#HttpOnly_')) {
+            httpOnly = true;
+            line = line.slice('#HttpOnly_'.length);
+        }
         if (!line.trim() || line.startsWith('#')) continue;
         const parts = line.split('\t');
         if (parts.length < 7) continue;
@@ -203,7 +222,7 @@ async function importCookiesFromFile(cookieFile, targetSession, defaultUrl) {
                 value,
                 path:           cookiePath.trim(),
                 secure,
-                httpOnly:       false,
+                httpOnly,
                 expirationDate: expiry > 0 ? expiry : undefined,
             });
             imported++;

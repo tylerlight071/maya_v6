@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
-import { WEATHER_WS } from '../constants'
+import { WEATHER_WS, wsUrl } from '../constants'
 import { useDraggable } from '../hooks/useDraggable'
 import styles from './WeatherWidget.module.css'
 
@@ -74,7 +74,7 @@ export default function WeatherWidget({ visible, isAway = false }: WeatherWidget
     let backoff = 2000
 
     function connect() {
-      const ws = new WebSocket(WEATHER_WS)
+      const ws = new WebSocket(wsUrl(WEATHER_WS))
       ws.onopen  = () => { setWsOk(true); backoff = 2000 }
       ws.onerror = () => ws.close()
       ws.onclose = () => {

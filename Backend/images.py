@@ -163,6 +163,9 @@ async def _poll() -> None:
 # ── WebSocket handler ─────────────────────────────────────────────────────────
 
 async def handle_client(websocket) -> None:
+    import auth
+    if not await auth.check(websocket):
+        return
     global _catalog, _last_mtime   # declared at top so all uses in this function are valid
     _clients.add(websocket)
     try:

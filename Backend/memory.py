@@ -12,12 +12,32 @@ Tiers:
 """
 import json
 import math
+import os
 import shutil
+import tempfile
 from collections import defaultdict
 from datetime import datetime, date, timedelta
 from pathlib import Path
 
 import httpx
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write text durably: temp file in the same directory, fsync, then atomic
+    os.replace. Prevents a crash/power-loss mid-write from truncating or
+    corrupting the target JSON file (which load_* would then read back as empty)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -95,9 +115,7 @@ def load_core() -> dict:
 
 def save_core(data: dict) -> None:
     MEMORY_DIR.mkdir(exist_ok=True)
-    CORE_FILE.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    _atomic_write_text(CORE_FILE, json.dumps(data, indent=2, ensure_ascii=False))
 
 
 def _backup_core() -> None:
@@ -129,7 +147,7 @@ def load_episodes(companion: bool = False) -> list:
 def _save_episodes(episodes: list, companion: bool = False) -> None:
     MEMORY_DIR.mkdir(exist_ok=True)
     path = COMPANION_EPISODES_FILE if companion else EPISODES_FILE
-    path.write_text(json.dumps(episodes, indent=2, ensure_ascii=False), encoding="utf-8")
+    _atomic_write_text(path, json.dumps(episodes, indent=2, ensure_ascii=False))
 
 
 # ── Session log persistence ───────────────────────────────────────────────────
@@ -142,10 +160,10 @@ def save_log(history: list[dict], companion: bool = False) -> None:
     logs_dir.mkdir(parents=True, exist_ok=True)
     ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = logs_dir / f"{ts}.json"
-    log_path.write_text(
+    _atomic_write_text(
+        log_path,
         json.dumps({"timestamp": datetime.now().isoformat(), "messages": history},
                    ensure_ascii=False, indent=2),
-        encoding="utf-8",
     )
     all_logs = sorted(logs_dir.glob("*.json"))
     for old in all_logs[:-MAX_LOGS]:
@@ -196,9 +214,7 @@ def _load_episode_embeddings() -> dict:
 
 def _save_episode_embeddings(data: dict) -> None:
     MEMORY_DIR.mkdir(exist_ok=True)
-    EPISODE_EMBEDDINGS_FILE.write_text(
-        json.dumps(data, ensure_ascii=False), encoding="utf-8"
-    )
+    _atomic_write_text(EPISODE_EMBEDDINGS_FILE, json.dumps(data, ensure_ascii=False))
 
 
 async def _embed(text: str) -> list | None:
@@ -334,7 +350,7 @@ def load_projects() -> list:
 
 def save_projects(data: list) -> None:
     MEMORY_DIR.mkdir(exist_ok=True)
-    PROJECTS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    _atomic_write_text(PROJECTS_FILE, json.dumps(data, indent=2, ensure_ascii=False))
 
 
 def update_project(name: str, status: str | None = None, note: str | None = None) -> str:
@@ -899,7 +915,7 @@ async def _regenerate_narrative() -> None:
             narrative = r.json().get("message", {}).get("content", "").strip()
             if narrative:
                 MEMORY_DIR.mkdir(exist_ok=True)
-                NARRATIVE_FILE.write_text(narrative, encoding="utf-8")
+                _atomic_write_text(NARRATIVE_FILE, narrative)
                 print("[memory] narrative profile refreshed", flush=True)
     except Exception as e:
         print(f"[memory] narrative error: {e}", flush=True)

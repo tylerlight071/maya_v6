@@ -322,6 +322,9 @@ async def set_location(query: str) -> "dict | None":
 # ── WebSocket handler ─────────────────────────────────────────────────────────
 
 async def handle_client(websocket) -> None:
+    import auth
+    if not await auth.check(websocket):
+        return
     _clients.add(websocket)
     try:
         if _current_weather:

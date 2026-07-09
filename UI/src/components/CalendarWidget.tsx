@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
 import { useDraggable } from '../hooks/useDraggable'
-import { CALENDAR_WS } from '../constants'
+import { CALENDAR_WS, wsUrl } from '../constants'
 import styles from './CalendarWidget.module.css'
 
 interface CalEvent { id: string; title: string; start: string; end: string; location: string }
@@ -42,7 +42,7 @@ export default function CalendarWidget({ visible, isAway = false }: Props) {
     let reconnect: ReturnType<typeof setTimeout>
     let backoff = 2000
     function connect() {
-      const ws = new WebSocket(CALENDAR_WS)
+      const ws = new WebSocket(wsUrl(CALENDAR_WS))
       ws.onopen    = () => { setWsOk(true); backoff = 2000 }
       ws.onclose   = () => { setWsOk(false); backoff = Math.min(backoff * 1.5, 30_000); reconnect = setTimeout(connect, backoff) }
       ws.onerror   = () => ws.close()

@@ -95,6 +95,9 @@ async def broadcast_notes() -> None:
 # ── WebSocket handler ─────────────────────────────────────────────────────────
 
 async def handle_client(websocket) -> None:
+    import auth
+    if not await auth.check(websocket):
+        return
     _clients.add(websocket)
     try:
         await websocket.send(json.dumps({"type": "notes_data", "notes": _notes}))
